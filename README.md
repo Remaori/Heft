@@ -1,6 +1,7 @@
 # Heft
 
 [![Build](https://github.com/Remaori/Heft/actions/workflows/build.yml/badge.svg)](https://github.com/Remaori/Heft/actions/workflows/build.yml)
+[![Latest release](https://img.shields.io/github/v/release/Remaori/Heft)](https://github.com/Remaori/Heft/releases/latest)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 ![Format: VST3](https://img.shields.io/badge/format-VST3-orange.svg)
 ![Platform: Windows x64](https://img.shields.io/badge/platform-Windows%20x64-0078D6.svg)
@@ -27,11 +28,14 @@ and soft clipper.
 
 ## Download
 
-Every push to `main` is built and validated by GitHub Actions. To get the latest
-build, open the [Build workflow](https://github.com/Remaori/Heft/actions/workflows/build.yml),
-click the most recent green run and download **Heft-VST3-Windows-x64** (you need
-to be signed in to GitHub). Unzip it and copy `Heft.vst3` into your VST3 folder
-(see [Add the folder to REAPER](#add-the-folder-to-reaper-once)).
+Get the latest version from [**Releases**](https://github.com/Remaori/Heft/releases/latest):
+download `Heft-vX.Y.Z-Windows-x64.zip`, unzip it and copy the `Heft.vst3` folder into
+your VST3 folder (see [Add the folder to REAPER](#add-the-folder-to-reaper-once)).
+
+Development builds of every push to `main` are available from the
+[Build workflow](https://github.com/Remaori/Heft/actions/workflows/build.yml): open the
+most recent green run and download **Heft-VST3-Windows-x64** (you need to be signed in
+to GitHub; these builds expire after 90 days).
 
 ## Build from source
 
@@ -63,6 +67,20 @@ powershell -ExecutionPolicy Bypass -File build.ps1 -Clean          # from scratc
 
 If REAPER is open with the plugin loaded, the script stops and tells you
 (Windows won't let you replace a DLL that is in use).
+
+### Publishing a new version
+
+1. Bump the version in `CMakeLists.txt` (`project(Heft VERSION 0.2.0 ...)`) and commit it.
+2. Tag the commit and push both:
+
+   ```powershell
+   git tag v0.2.0
+   git push origin main v0.2.0
+   ```
+
+GitHub Actions builds and validates the plugin and publishes a release with the
+zipped `Heft.vst3`. If the tag doesn't match the version in `CMakeLists.txt`, the
+release step fails and nothing is published.
 
 ## Add the folder to REAPER (once)
 
@@ -110,7 +128,7 @@ Source/
   DSP/LevelMatcher.h      7. Level matcher (RMS)
   DSP/SoftClipper.h       7. Soft clipper
 tests/Measure.cpp         HeftMeasure: loads the VST3 and measures it (build.ps1 -Measure)
-.github/workflows/        GitHub Actions: build + pluginval + HeftMeasure on every push
+.github/workflows/        GitHub Actions: build + pluginval + HeftMeasure; releases on v* tags
 docs/screenshot.png       UI screenshot used in this README
 LICENSE                   GNU AGPL v3
 ```
