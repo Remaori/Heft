@@ -1,0 +1,24 @@
+{
+    "version": 6,
+    "configurePresets": [
+        {
+            "name": "default",
+            "displayName": "Visual Studio (x64)",
+            "description": "Newest Visual Studio found, 64-bit, build folder ./build (same as build.ps1)",
+            "binaryDir": "${sourceDir}/build",
+            "architecture": {
+                "value": "x64",
+                "strategy": "set"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "release",
+            "displayName": "Release",
+            "configurePreset": "default",
+            "configuration": "Release",
+            "targets": [ "Heft_VST3" ]
+        }
+    ]
+}

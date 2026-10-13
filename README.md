@@ -61,6 +61,11 @@ cd Heft
 .\build.bat
 ```
 
+To edit the code in VS Code, install the **C/C++** and **CMake Tools** extensions and
+set `"C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools"`. CMake Tools uses
+`CMakePresets.json` (same `build` folder as `build.bat`), so IntelliSense sees the same
+settings as the real build. Visual Studio picks up the preset automatically.
+
 ### Build, validate and install
 
 Double-click **`build.bat`**. It does everything: builds in Release, validates
