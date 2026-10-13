@@ -7,7 +7,7 @@ on:
   push:
     branches: [main]
     tags: ['v*']
-    paths-ignore: ['**.md', 'docs/**', 'LICENSE']
+    paths-ignore: ['**.md', 'docs/**', 'LICENSE', 'THIRD_PARTY_NOTICES.txt']
   pull_request:
   workflow_dispatch:
 
@@ -66,8 +66,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           zip_name="Heft-$GITHUB_REF_NAME-Windows-x64.zip"
-          cp LICENSE dist/
-          (cd dist && zip -r "../$zip_name" Heft.vst3 LICENSE)
+          cp LICENSE THIRD_PARTY_NOTICES.txt dist/
+          (cd dist && zip -r "../$zip_name" Heft.vst3 LICENSE THIRD_PARTY_NOTICES.txt)
 
           cat > notes.md <<'EOF'
           VST3 plugin for Windows x64, validated with pluginval (strictness 10).
@@ -79,6 +79,7 @@ jobs:
           3. Rescan plugins in your DAW (REAPER: Options → Preferences → Plug-ins → VST → Re-scan).
 
           The plugin is not code-signed. Licensed under the GNU AGPL v3; the source code is in this repository.
+          Third-party licences are in THIRD_PARTY_NOTICES.txt inside the zip.
           EOF
 
           gh release create "$GITHUB_REF_NAME" "$zip_name" --verify-tag --title "Heft $GITHUB_REF_NAME" --notes-file notes.md

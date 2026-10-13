@@ -48,11 +48,18 @@ target_compile_definitions(Heft
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
+        # Heft never reads or writes audio files: leave the codecs out of the binary
+        # (smaller plugin, fewer third-party licences to ship; see THIRD_PARTY_NOTICES.txt).
+        JUCE_USE_FLAC=0
+        JUCE_USE_OGGVORBIS=0
+        JUCE_USE_OPUS=0
+        JUCE_USE_MP3AUDIOFORMAT=0
+        JUCE_USE_WINDOWS_MEDIA_FORMAT=0
 )
 
 target_link_libraries(Heft
     PRIVATE
-        juce::juce_audio_utils
+        juce::juce_audio_processors
         juce::juce_dsp
     PUBLIC
         juce::juce_recommended_config_flags

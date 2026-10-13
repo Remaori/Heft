@@ -152,6 +152,7 @@ tests/Measure.cpp         HeftMeasure: loads the VST3 and measures it (build.ps1
 .github/workflows/        GitHub Actions: build + pluginval + HeftMeasure; releases on v* tags
 docs/screenshot.png       UI screenshot used in this README
 LICENSE                   GNU AGPL v3
+THIRD_PARTY_NOTICES.txt   Licenses of the third-party code inside the plugin binary
 ```
 
 ## Which numbers to change (all in `Source/Tuning.h`)
@@ -221,4 +222,9 @@ Heft is free software: you can redistribute it and/or modify it under the terms 
 the GNU Affero General Public License, version 3. See [LICENSE](LICENSE).
 
 It is built with [JUCE](https://juce.com), which is used under its AGPLv3 license.
+The plugin binary also contains third-party code (the VST 3 SDK and the image and
+text libraries bundled with JUCE). Their licenses are reproduced in
+[THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt), which ships inside every release zip.
+This software is based in part on the work of the Independent JPEG Group.
+
 VST is a registered trademark of Steinberg Media Technologies GmbH.
