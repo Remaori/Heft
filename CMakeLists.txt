@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(Heft VERSION 0.2.0 LANGUAGES C CXX)
+project(Heft VERSION 0.2.1 LANGUAGES C CXX)
 
 # Link the C++ runtime statically: the .vst3 does not depend on the Visual C++
 # DLLs and runs on any 64-bit Windows.
