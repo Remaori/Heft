@@ -1,5 +1,8 @@
 #pragma once
 
+#include <array>
+#include <atomic>
+
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
 
@@ -45,6 +48,24 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
     juce::AudioProcessorValueTreeState apvts;
+
+    // Saturator settings for a given Fatness and Color (both 0..1). Shared with the
+    // editor's curve display so it always draws exactly what the audio path uses.
+    static Saturator::Shape saturatorShapeFor (float fatness, float color) noexcept;
+
+    // Meter values for the editor. The audio thread accumulates the peaks since
+    // the last read; the editor reads and resets them with exchange(). Lock-free.
+    struct Meters
+    {
+        std::array<std::atomic<float>, 2> inputPeak {}, outputPeak {};   // linear
+        std::atomic<float> gainReductionDb { 0.0f };                     // <= 0
+        std::atomic<float> levelMatchDb { 0.0f };                        // latest correction
+    };
+
+    Meters meters;
+
+    // Editor width in pixels (0 = default), saved with the project.
+    std::atomic<int> editorWidth { 0 };
 
 private:
     void updateParameterTargets() noexcept;

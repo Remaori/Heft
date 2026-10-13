@@ -3,6 +3,26 @@
 #include "Parameters.h"
 #include "Tuning.h"
 
+namespace
+{
+    // State property that remembers the editor size in the project.
+    const juce::Identifier editorWidthId { "editorWidth" };
+
+    // Meter accumulation (audio thread): keep the most extreme value until the editor
+    // reads it. A rare race with the editor's exchange() only delays a peak by one frame.
+    void storeMax (std::atomic<float>& target, float value) noexcept
+    {
+        if (value > target.load (std::memory_order_relaxed))
+            target.store (value, std::memory_order_relaxed);
+    }
+
+    void storeMin (std::atomic<float>& target, float value) noexcept
+    {
+        if (value < target.load (std::memory_order_relaxed))
+            target.store (value, std::memory_order_relaxed);
+    }
+}
+
 HeftAudioProcessor::HeftAudioProcessor()
     : AudioProcessor (BusesProperties()
                           .withInput ("Input", juce::AudioChannelSet::stereo(), true)
@@ -104,12 +124,17 @@ void HeftAudioProcessor::updateCoefficients (float fatness, float color) noexcep
         deCoeffs  = deEmphasis.makeCoefficients (1.0f / highGain);
     }
 
-    saturatorShape = Saturator::makeShape (fatness * tuning::driveAtMax,
-                                           juce::jmap (color, tuning::biasAtMinColor, tuning::biasAtMaxColor),
-                                           juce::Decibels::decibelsToGain (fatness * tuning::fatnessMakeupAtMaxDb));
+    saturatorShape = saturatorShapeFor (fatness, color);
 
     lastFatness = fatness;
     lastColor   = color;
+}
+
+Saturator::Shape HeftAudioProcessor::saturatorShapeFor (float fatness, float color) noexcept
+{
+    return Saturator::makeShape (fatness * tuning::driveAtMax,
+                                 juce::jmap (color, tuning::biasAtMinColor, tuning::biasAtMaxColor),
+                                 juce::Decibels::decibelsToGain (fatness * tuning::fatnessMakeupAtMaxDb));
 }
 
 //==============================================================================
@@ -143,6 +168,10 @@ void HeftAudioProcessor::processChunk (juce::dsp::AudioBlock<float> block) noexc
     const auto numChannels = block.getNumChannels();
     const auto channelNorm = 1.0f / (float) numChannels;
 
+    // Meter values for this chunk.
+    std::array<float, 2> inputPeak {}, outputPeak {};
+    float maxReductionDb = 0.0f, matchGain = 1.0f;
+
     // --- 1. Compressor + 2. pre-emphasis (base sample rate) -----------------
     for (size_t i = 0; i < numSamples; ++i)
     {
@@ -153,8 +182,9 @@ void HeftAudioProcessor::processChunk (juce::dsp::AudioBlock<float> block) noexc
         for (size_t ch = 0; ch < numChannels; ++ch)
         {
             const auto x = block.getChannelPointer (ch)[i];
-            peak   = juce::jmax (peak, std::abs (x));
-            power += x * x;
+            inputPeak[ch] = juce::jmax (inputPeak[ch], std::abs (x));
+            peak          = juce::jmax (peak, std::abs (x));
+            power        += x * x;
 
             // Keep the bypass line fed so that switching to bypass doesn't cut out.
             bypassDelay.pushSample ((int) ch, x);
@@ -164,6 +194,7 @@ void HeftAudioProcessor::processChunk (juce::dsp::AudioBlock<float> block) noexc
         inputSquared[i] = power * channelNorm;
 
         const auto compGain = compressor.processPeak (peak);
+        maxReductionDb = juce::jmin (maxReductionDb, compressor.getGainReductionDb());
 
         for (size_t ch = 0; ch < numChannels; ++ch)
         {
@@ -201,9 +232,9 @@ void HeftAudioProcessor::processChunk (juce::dsp::AudioBlock<float> block) noexc
             power += x * x;
         }
 
-        const auto matchGain = levelMatcher.process (inputSquared[i], power * channelNorm);
-        const auto gain      = outputGain.getNextValue() * (1.0f + levelMatchMix.getNextValue() * (matchGain - 1.0f));
-        const auto clip      = clipperMix.getNextValue();
+        matchGain       = levelMatcher.process (inputSquared[i], power * channelNorm);
+        const auto gain = outputGain.getNextValue() * (1.0f + levelMatchMix.getNextValue() * (matchGain - 1.0f));
+        const auto clip = clipperMix.getNextValue();
 
         for (size_t ch = 0; ch < numChannels; ++ch)
         {
@@ -212,8 +243,20 @@ void HeftAudioProcessor::processChunk (juce::dsp::AudioBlock<float> block) noexc
 
             if (clip > 0.0f)
                 x += clip * (SoftClipper::process (x, tuning::clipperKnee, tuning::clipperCeiling) - x);
+
+            outputPeak[ch] = juce::jmax (outputPeak[ch], std::abs (x));
         }
     }
+
+    // --- Meters for the editor -------------------------------------------------
+    for (size_t ch = 0; ch < numChannels; ++ch)
+    {
+        storeMax (meters.inputPeak[ch], inputPeak[ch]);
+        storeMax (meters.outputPeak[ch], outputPeak[ch]);
+    }
+
+    storeMin (meters.gainReductionDb, maxReductionDb);
+    meters.levelMatchDb.store (juce::Decibels::gainToDecibels (matchGain), std::memory_order_relaxed);
 }
 
 void HeftAudioProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
@@ -242,15 +285,24 @@ juce::AudioProcessorEditor* HeftAudioProcessor::createEditor()
 
 void HeftAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
-    if (auto xml = apvts.copyState().createXml())
+    auto state = apvts.copyState();
+    state.setProperty (editorWidthId, editorWidth.load(), nullptr);
+
+    if (auto xml = state.createXml())
         copyXmlToBinary (*xml, destData);
 }
 
 void HeftAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
     if (auto xml = getXmlFromBinary (data, sizeInBytes))
+    {
         if (xml->hasTagName (apvts.state.getType()))
-            apvts.replaceState (juce::ValueTree::fromXml (*xml));
+        {
+            auto state = juce::ValueTree::fromXml (*xml);
+            editorWidth = (int) state.getProperty (editorWidthId, 0);
+            apvts.replaceState (state);
+        }
+    }
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

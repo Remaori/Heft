@@ -37,6 +37,9 @@ public:
         return juce::Decibels::decibelsToGain (gainReductionDb + makeupDb, -200.0f);
     }
 
+    // Current gain reduction in dB (<= 0), without makeup. Used by the GR meter.
+    float getGainReductionDb() const noexcept { return gainReductionDb; }
+
 private:
     static float timeToCoeff (float ms, double sampleRate)
     {

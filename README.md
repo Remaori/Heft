@@ -12,7 +12,7 @@
 VST3 plugin (Windows, 64-bit, stereo) that makes a sound feel thicker, denser
 and louder with just a few controls. Built with JUCE 9.0.4 + CMake.
 
-<p align="center"><img src="docs/screenshot.png" alt="Heft UI" width="480"></p>
+<p align="center"><img src="docs/screenshot.png" alt="Heft UI" width="640"></p>
 
 | Control | What it does |
 |---|---|
@@ -25,6 +25,18 @@ and louder with just a few controls. Built with JUCE 9.0.4 + CMake.
 Signal chain: linked peak compressor → pre-emphasis tilt EQ → asymmetric tanh
 saturation (4x oversampled) → de-emphasis → DC blocker → output gain, level match
 and soft clipper.
+
+### Interface
+
+- **Meters**: input and output peak levels (IN / OUT) and the compressor's gain
+  reduction (GR) with a numeric readout.
+- **Saturation curve**: the transfer curve of the saturator for the current Fatness
+  and Color. It shows the shape only (scaled to fit), so you can see how hard it bends
+  and how asymmetric it is.
+- **Level Match readout**: with Level Match on, the switch shows the correction being applied.
+- **Knobs**: double-click (or Alt+click) to reset, click the value to type an exact number.
+  Hover any control for a tooltip.
+- **Resizable**: drag the bottom-right corner (75 %–200 %). The size is saved with the project.
 
 ## Download
 
@@ -119,7 +131,11 @@ Source/
   Parameters.h            Parameters: names, ranges and defaults
   PluginProcessor.cpp     The chain: prepareToPlay, processChunk (3 phases) and
                           updateCoefficients (how Fatness/Color drive each stage)
-  PluginEditor.cpp        UI (standard JUCE knobs)
+  PluginEditor.cpp        UI layout, meter ballistics and tooltips
+  UI/Palette.h            Colours and fonts of the whole UI
+  UI/HeftLookAndFeel.h    How knobs, switches and text boxes are drawn
+  UI/Meters.h             IN / OUT level meters and the GR meter
+  UI/CurveDisplay.h       Saturation curve display
   DSP/Compressor.h        1. Linked compressor, peak detector, soft knee, makeup
   DSP/TiltFilter.h        2 and 5. Pre-emphasis tilt EQ and its exact inverse
   DSP/Saturator.h         3. Asymmetric tanh (even harmonics)
@@ -185,8 +201,9 @@ measurements) and reopen REAPER.
   grows with Color, by design. If you want even harmonics on the "dark" side too, raise `biasAtMinColor`.
 - Fixed latency of 61 samples (shorter in ms at 96 kHz). REAPER compensates for it,
   but you'll notice it a little when monitoring live through the plugin.
-- Stereo in and out only. No dry/wet mix, no M/S mode, no presets, no meters
-  (gain reduction, levels), no parameter undo. Fixed-size UI.
+- Stereo in and out only. No dry/wet mix, no M/S mode, no presets and no parameter undo.
+- The GR meter shows the compressor only; the saturation also lowers peaks, which the
+  meter doesn't count.
 - The VST3's own bypass keeps the latency, but toggling it can click (no crossfade).
 - CPU usage inside REAPER has not been measured (tanh is computed 4 times per sample and channel).
 - Windows x64 only; not code-signed.
