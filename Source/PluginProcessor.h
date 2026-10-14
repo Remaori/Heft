@@ -8,6 +8,7 @@
 
 #include "DSP/Compressor.h"
 #include "DSP/DcBlocker.h"
+#include "DSP/KWeighting.h"
 #include "DSP/LevelMatcher.h"
 #include "DSP/Saturator.h"
 #include "DSP/SoftClipper.h"
@@ -68,9 +69,15 @@ public:
     std::atomic<int> editorWidth { 0 };
 
 private:
+    using Delay = juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None>;
+
+    void process (juce::AudioBuffer<float>& buffer, bool bypassed) noexcept;
     void updateParameterTargets() noexcept;
     void updateCoefficients (float fatness, float color) noexcept;
     void processChunk (juce::dsp::AudioBlock<float> block) noexcept;
+    void pushDry (juce::dsp::AudioBlock<float> block) noexcept;
+    void processClipper (juce::dsp::AudioBlock<float> block) noexcept;
+    int computeLatency();
 
     // Parameter values (atomic: read lock-free from the audio thread).
     std::atomic<float>* fatnessParam    = nullptr;
@@ -78,31 +85,42 @@ private:
     std::atomic<float>* outputParam     = nullptr;
     std::atomic<float>* clipperParam    = nullptr;
     std::atomic<float>* levelMatchParam = nullptr;
+    std::atomic<float>* mixParam        = nullptr;
 
-    // Parameter smoothing to avoid clicks.
-    juce::SmoothedValue<float> fatnessSmoothed, colorSmoothed, clipperMix, levelMatchMix;
+    // Parameter smoothing to avoid clicks. (Mix is smoothed inside the DryWetMixer.)
+    juce::SmoothedValue<float> fatnessSmoothed, colorSmoothed, clipperMix, levelMatchMix, bypassMix;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Multiplicative> outputGain;
 
     // Processing chain (in order).
-    Compressor compressor;                     // 1
-    TiltFilter preEmphasis;                    // 2
-    juce::dsp::Oversampling<float> oversampling; // 3 + 4
-    TiltFilter deEmphasis;                     // 5
-    DcBlocker dcBlocker;                       // 6
-    LevelMatcher levelMatcher;                 // 7
+    Compressor compressor;                         // 1
+    TiltFilter preEmphasis;                        // 2
+    juce::dsp::Oversampling<float> oversampling;   // 3 + 4
+    TiltFilter deEmphasis;                         // 5
+    DcBlocker dcBlocker;                           // 6
+    KWeighting inputWeighting, wetWeighting;       // 7: level match measures K-weighted loudness
+    LevelMatcher levelMatcher;
+    juce::dsp::Oversampling<float> dryOversampling;   // 8: Mix. The dry signal runs through the same
+    juce::dsp::DryWetMixer<float> dryWetMixer;        //    filters as the wet one, so both line up exactly
+    juce::dsp::Oversampling<float> clipperOversampling;   // 9: clipper at 4x
 
-    // Bypass with the same latency as the processed path, so it stays time-aligned.
-    juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None> bypassDelay;
+    // Host bypass: the full chain keeps running and we crossfade to the delayed input.
+    Delay bypassDelay;
 
     // State derived from Fatness/Color (recomputed only when they change).
     float lastFatness = -1.0f, lastColor = -1.0f;
     TiltFilter::Coefficients preCoeffs, deCoeffs;
     Saturator::Shape saturatorShape;
 
+    // The dry filters only run while the dry signal is audible (Mix below 100 %, plus
+    // the mixer's fade time), to save CPU at the default Mix of 100 %.
+    int dryHoldSamples = 0, dryHoldLength = 0;
+    bool dryOversamplingActive = false;
+
     // Per-sample values handed from one stage to the next (allocated in prepareToPlay).
-    std::vector<float> inputSquared;
+    std::vector<float> inputSquared, clipperWeights;
     std::vector<TiltFilter::Coefficients> deCoeffsPerSample;
     std::vector<Saturator::Shape> shapePerSample;
+    juce::AudioBuffer<float> dryScratch, bypassDry;
     size_t maxChunkSize = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (HeftAudioProcessor)

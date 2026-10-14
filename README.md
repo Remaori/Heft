@@ -18,13 +18,29 @@ and louder with just a few controls. Built with JUCE 9.0.4 + CMake.
 |---|---|
 | **Fatness** (0–100 %) | Raises compression and saturation together. Transparent at 0 %. |
 | **Color** (0–100 %) | Saturation character: 0 % dark/warm, 100 % bright/aggressive (more even harmonics). |
-| **Output** (−24…+12 dB) | Final level. |
-| **Clipper** | Soft clipper at the very end: linear up to −2.5 dBFS, never exceeds 0 dBFS. |
-| **Level Match** | Compensates the gain so the processed sound is as loud as the input (honest A/B). |
+| **Mix** (0–100 %) | Dry/wet: blends the processed sound with the original for parallel processing. 100 % = fully processed. |
+| **Output** (−24…+12 dB) | Final level, after the mix. |
+| **Clipper** | Soft clipper at the very end, oversampled 4x: linear up to −2.5 dBFS, sample peaks never exceed 0 dBFS. |
+| **Level Match** | Matches the loudness of the processed sound to the input (K-weighted, like LUFS) for an honest A/B. |
 
 Signal chain: linked peak compressor → pre-emphasis tilt EQ → asymmetric tanh
-saturation (4x oversampled) → de-emphasis → DC blocker → output gain, level match
-and soft clipper.
+saturation (4x oversampled) → de-emphasis → DC blocker → level match → **Mix** with the
+dry signal → output gain → soft clipper (4x oversampled) → safety clip.
+
+- **Mix stays phase-aligned**: the dry signal runs through the same oversampling filters
+  as the processed one (without the saturation), so blending them never comb-filters.
+  A plain delay isn't enough: JUCE's integer-latency correction is an allpass, and with
+  only a delay Mix 50 % lost 1.5 dB at 20 kHz. Now it is flat within 0.01 dB.
+- **Clipper and inter-sample peaks**: clipping at 4x means less aliasing, and it also
+  catches peaks that fall *between* samples. The 4x decimation filter can overshoot a
+  little, so a hard safety clip at 0 dBFS follows: sample peaks are guaranteed, and in
+  the tests the true peak (4x reconstruction) also stayed at 0.0 dBTP. A clipper running
+  at the normal rate would let the classic 12 kHz test signal reach about +3 dBTP.
+- **Level Match** applies the ITU-R BS.1770 K-weighting filters before measuring over
+  0.4 s, so it is close to momentary loudness (LUFS). Bass-heavy material is matched by
+  how loud it sounds, not by its raw energy.
+- **Bypass**: when the host bypasses Heft, it crossfades (30 ms) to the time-aligned dry
+  signal instead of cutting, so there's no click. The chain keeps running while bypassed.
 
 ### Interface
 
@@ -118,8 +134,8 @@ After rebuilding, just close and reopen REAPER. If you changed parameters
   material can come up by about +10 dB. The clipper is off by default.
 - In the FX browser, right-click Heft → **Run as → Dedicated process**:
   if the plugin crashes, REAPER doesn't go down with it.
-- **Honest A/B**: turn on *Level Match*, leave *Output* at 0 dB and toggle the
-  FX bypass. After a big change, wait ~1 s (the level matcher uses a 0.4 s window).
+- **Honest A/B**: turn on *Level Match*, leave *Mix* at 100 % and *Output* at 0 dB, and
+  toggle the FX bypass. After a big change, wait ~1 s (the level matcher uses a 0.4 s window).
 - Before using it in a real project, do **File → Save project as…** (a copy).
 - If a project ever fails to open because of the plugin: **File → Open project**
   and tick **Open with FX offline (recovery mode)**.
@@ -169,22 +185,35 @@ THIRD_PARTY_NOTICES.txt   Licenses of the third-party code inside the plugin bin
 | Even harmonics (tube warmth) | `biasAtMinColor`, `biasAtMaxColor` | 0 / 0.35 → e.g. 0.1 / 0.5 |
 | How much "louder" it sounds as Fatness goes up | `fatnessMakeupAtMaxDb` | 6 → 3 (more honest) / 9 |
 | Where the clipper starts clipping | `clipperKnee` | 0.75 (−2.5 dBFS) → 0.9 (harder and later) |
-| Level matcher speed | `levelMatchWindowSec` | 0.4 → 1.0 s (steadier, slower) |
-| Oversampling factor | `oversamplingFactorLog2` | 2 (4x) → 3 (8x: less aliasing, more CPU and latency) |
+| Level matcher speed | `levelMatchWindowSec` | 0.4 → 1.0 s (steadier, slower; 0.4 = momentary loudness) |
+| Oversampling factor (saturation) | `oversamplingFactorLog2` | 2 (4x) → 3 (8x: less aliasing, more CPU and latency) |
+| Oversampling factor (clipper) | `clipperOversamplingFactorLog2` | 2 (4x) → 1 (2x: less latency, more aliasing) |
+| Bypass crossfade length | `bypassFadeSec` | 0.03 s |
 
 After each change: `build.bat` (or `build.ps1 -Measure` to see the
 measurements) and reopen REAPER.
 
 ## Reference measurements (HeftMeasure, 48 kHz)
 
-- Latency: **61 samples** (1.27 ms at 48 kHz), reported to the host and verified with an impulse.
-- Fatness 0 %: level change ≤ 0.01 dB, THD+N < −127 dB; flat up to 21 kHz (−0.18 dB at 22 kHz).
+- Latency: **122 samples** (2.54 ms at 48 kHz): 61 for the saturation oversampling and 61
+  for the clipper's. Reported to the host; the measured delay is 121.96–121.99 samples on
+  the wet, dry and clipper paths.
+- Fatness 0 %: level change ≤ 0.01 dB, THD+N < −127 dB; flat up to 21 kHz (−0.37 dB at 22 kHz).
+- Mix 50 % at Fatness 0 %: flat within 0.01 dB from 100 Hz to 20 kHz (dry and wet aligned).
+  Mix 0 % at Fatness 100 % returns the clean input (THD+N −146 dB).
 - 1 kHz sine at −6 dBFS, Fatness 50 %: THD+N ≈ −24 dB (Color 0 %) to −20 dB (Color 100 %);
   H2 goes from absent (Color 0 %) to −21 dB (Color 100 %).
 - Kick-like hits at −6 dBFS: RMS +2.8 / +3.4 / +2.9 / +2.1 dB at Fatness 25 / 50 / 75 / 100 %,
-  with the peaks rising less (more density).
-- Level Match: 0.00 dB residual difference in the measured cases.
-- Clipper: the output peak never exceeds 0 dBFS.
+  with the peaks rising less (more density). At Fatness 100 %, Mix 25 / 50 / 75 % gives
+  +0.4 / +0.9 / +1.5 dB.
+- Clipper (Fatness 50 %, Output +12 dB): sample peak ≤ 0 dBFS and true peak 0.0 dBTP,
+  including a 12 kHz sine with 45° phase (the classic inter-sample-peak test).
+- Level Match: loudness (K-weighted) difference 0.00–0.01 dB in all cases, including
+  55 Hz kick hits.
+- Bypass: no step larger than the signal's own (no click).
+- CPU (one core, 48 kHz, 512-sample blocks): about 3 % with the defaults and 4.5 % with
+  everything on (Mix below 100 %, clipper, Level Match). Measured on the development PC;
+  your numbers will differ.
 
 ## Known limitations
 
@@ -193,25 +222,31 @@ measurements) and reopen REAPER.
   been tried briefly in REAPER and not in other DAWs.
 - **The sound is not tuned by ear yet**: the values were set with synthetic signals
   (sines, a synthetic kick). What sounds "right" is up to you, in `Tuning.h`.
-- **The clipper is not oversampled** (it runs last, at the base rate): heavy
-  clipping produces some aliasing. The main saturation does have 4x oversampling.
-- **The compressor is not oversampled either**, and with a 2 ms attack it distorts
+- **True peak isn't guaranteed**: the clipper guarantees sample peaks (≤ 0 dBFS). It
+  catches most inter-sample peaks too (0.0 dBTP in the tests), but the final safety clip
+  works on samples, so a true peak slightly above 0 dBTP is still possible. For strict
+  true-peak delivery, put a true-peak limiter after Heft.
+- **The compressor is not oversampled**, and with a 2 ms attack it distorts
   the lows a bit (part of the "fat" character, but it is not a clean compressor).
-- **The level matcher measures RMS, not perceived loudness (LUFS)**: it follows the
-  music with ~0.4 s of delay, can "breathe" on very dynamic material, stops updating
-  below −60 dBFS and corrects at most ±24 dB. It measures before *Output*, so the
-  A/B is only exact with *Output* at 0 dB.
+- **Level Match is close to LUFS, not exact**: it uses the BS.1770 K-weighting but an
+  exponential 0.4 s average instead of a strict 400 ms window, with no gating beyond
+  −60 dB. It follows the music with ~0.4 s of delay, can "breathe" on very dynamic
+  material and corrects at most ±24 dB. It matches the processed (wet) signal before
+  *Mix* and *Output*, so the A/B is exact with *Output* at 0 dB.
 - With high Fatness, quiet material comes up a lot (+9.8 dB measured at Fatness 60 %
   on a sine at −20 dBFS). It's part of the effect, but watch your levels.
 - At Color 0 % the saturation is symmetric (no even harmonics); the asymmetry
   grows with Color, by design. If you want even harmonics on the "dark" side too, raise `biasAtMinColor`.
-- Fixed latency of 61 samples (shorter in ms at 96 kHz). REAPER compensates for it,
-  but you'll notice it a little when monitoring live through the plugin.
-- Stereo in and out only. No dry/wet mix, no M/S mode, no presets and no parameter undo.
+- Fixed latency of 122 samples (2.5 ms at 48 kHz, half that at 96 kHz). REAPER
+  compensates for it, but you'll notice it when monitoring live through the plugin.
+- Stereo in and out only. No M/S mode, no presets and no parameter undo.
 - The GR meter shows the compressor only; the saturation also lowers peaks, which the
   meter doesn't count.
-- The VST3's own bypass keeps the latency, but toggling it can click (no crossfade).
-- CPU usage inside REAPER has not been measured (tanh is computed 4 times per sample and channel).
+- The bypass crossfade only applies when the host uses the plugin's own VST3 bypass. If a
+  host bypasses by simply not calling the plugin, the switch is up to the host.
+- While bypassed, Heft keeps processing (that's what makes the crossfade possible), so it
+  uses the same CPU as when active.
+- The CPU figures come from HeftMeasure on the development PC, not from inside REAPER.
 - Windows x64 only; not code-signed.
 
 ## License

@@ -18,6 +18,7 @@ namespace palette
     inline const juce::Colour warm         { 0xffc9573a };   // Color at 0 % (dark / warm)
     inline const juce::Colour bright       { 0xffffe49a };   // Color at 100 % (bright / aggressive)
     inline const juce::Colour neutral      { 0xffb8c4d6 };   // Output
+    inline const juce::Colour mix          { 0xff6fc2e0 };   // Mix
 
     inline const juce::Colour meterLow     { 0xff4fc99a };
     inline const juce::Colour meterMid     { 0xffffc547 };

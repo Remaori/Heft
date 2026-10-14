@@ -15,6 +15,7 @@ HeftAudioProcessorEditor::HeftAudioProcessorEditor (HeftAudioProcessor& p)
       processor (p),
       fatnessAttachment (p.apvts, ParamIDs::fatness, fatnessKnob),
       colorAttachment (p.apvts, ParamIDs::color, colorKnob),
+      mixAttachment (p.apvts, ParamIDs::mix, mixKnob),
       outputAttachment (p.apvts, ParamIDs::output, outputKnob),
       clipperAttachment (p.apvts, ParamIDs::clipper, clipperButton),
       levelMatchAttachment (p.apvts, ParamIDs::levelMatch, levelMatchButton)
@@ -29,16 +30,21 @@ HeftAudioProcessorEditor::HeftAudioProcessorEditor (HeftAudioProcessor& p)
                "Overall amount: more compression and saturation together. 0 % is transparent.");
     setupKnob (colorKnob, colorLabel, "Color", ParamIDs::color,
                "Saturation character: low is dark and warm, high is bright and aggressive (more even harmonics).");
-    setupKnob (outputKnob, outputLabel, "Output", ParamIDs::output, "Final output level.");
+    setupKnob (mixKnob, mixLabel, "Mix", ParamIDs::mix,
+               "Dry/wet: blends the processed signal with the original, time-aligned (parallel processing). "
+               "100 % is fully processed.");
+    setupKnob (outputKnob, outputLabel, "Output", ParamIDs::output, "Final output level, after the mix.");
 
     fatnessKnob.getProperties().set ("arc", "fatness");
     colorKnob.getProperties().set ("arc", "color");
+    mixKnob.getProperties().set ("arc", "mix");
     outputKnob.getProperties().set ("arc", "neutral");
     outputKnob.getProperties().set ("bipolarFrom", 0.0);
 
-    clipperButton.setTooltip ("Soft clipper at the very end: the output never goes above 0 dBFS.");
-    levelMatchButton.setTooltip ("Matches the output loudness to the input for an honest A/B. "
-                                 "The number shows the correction being applied.");
+    clipperButton.setTooltip ("Soft clipper at the very end, oversampled 4x: sample peaks never go above 0 dBFS "
+                              "and most inter-sample peaks are caught too.");
+    levelMatchButton.setTooltip ("Matches the processed loudness to the input (K-weighted, like LUFS) for an "
+                                 "honest A/B. The number shows the correction being applied.");
     addAndMakeVisible (clipperButton);
     addAndMakeVisible (levelMatchButton);
 
@@ -155,9 +161,11 @@ void HeftAudioProcessorEditor::resized()
     levelMatchReadout.setFont (palette::font (13.0f * scale, true));
     content.removeFromLeft (px (18.0f));
 
-    // Centre: the big Fatness knob; to its right, Color above Output.
+    // Centre: the big Fatness knob; to its right, Color, Mix and Output.
     auto smallKnobs = content.removeFromRight (px (118.0f));
-    layoutKnob (colorKnob, colorLabel, smallKnobs.removeFromTop (smallKnobs.getHeight() / 2), scale, false);
+    const auto smallHeight = smallKnobs.getHeight() / 3;
+    layoutKnob (colorKnob, colorLabel, smallKnobs.removeFromTop (smallHeight), scale, false);
+    layoutKnob (mixKnob, mixLabel, smallKnobs.removeFromTop (smallHeight), scale, false);
     layoutKnob (outputKnob, outputLabel, smallKnobs, scale, false);
     layoutKnob (fatnessKnob, fatnessLabel, content, scale, true);
 }
@@ -170,7 +178,8 @@ void HeftAudioProcessorEditor::layoutKnob (juce::Slider& knob, juce::Label& labe
     const auto labelHeight = px (large ? 22.0f : 18.0f);
     const auto gap         = px (large ? 6.0f : 2.0f);
     const auto boxHeight   = px (large ? 30.0f : 22.0f);
-    const auto diameter    = juce::jmin (area.getWidth(), area.getHeight() - labelHeight - gap - boxHeight);
+    const auto spacing     = px (large ? 0.0f : 10.0f);   // breathing room between stacked knobs
+    const auto diameter    = juce::jmin (area.getWidth(), area.getHeight() - labelHeight - gap - boxHeight - spacing);
 
     // Keep caption, knob and value together, centred in the available space.
     auto group = area.withSizeKeepingCentre (area.getWidth(), labelHeight + gap + diameter + boxHeight);

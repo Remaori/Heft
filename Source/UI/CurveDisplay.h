@@ -69,7 +69,10 @@ public:
     void resized() override { rebuildCurve(); }
 
 private:
-    float titleHeight() const { return juce::jmax (10.0f, (float) getHeight() * 0.085f); }
+    float titleHeight() const
+    {
+        return juce::jmax (10.0f, juce::jmin ((float) getHeight() * 0.085f, (float) getWidth() * 0.065f));
+    }
 
     juce::Rectangle<float> titleArea() const
     {

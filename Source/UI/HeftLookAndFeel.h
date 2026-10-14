@@ -5,7 +5,7 @@
 // Custom drawing for knobs, switches, text boxes and tooltips.
 //
 // Knob arcs can be customised per slider through component properties:
-//   "arc" = "fatness" (amber that gets hotter), "color" (warm -> bright) or "neutral"
+//   "arc" = "fatness" (amber that gets hotter), "color" (warm -> bright), "mix" or "neutral"
 //   "bipolarFrom" = value the arc starts from (e.g. 0 dB for Output)
 class HeftLookAndFeel final : public juce::LookAndFeel_V4
 {
@@ -159,6 +159,9 @@ private:
 
         if (style == "neutral")
             return palette::neutral;
+
+        if (style == "mix")
+            return palette::mix;
 
         return palette::accent.interpolatedWith (palette::accentHot, position * position);
     }

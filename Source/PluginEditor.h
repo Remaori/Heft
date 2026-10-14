@@ -19,7 +19,7 @@ private:
     using ButtonAttachment = juce::AudioProcessorValueTreeState::ButtonAttachment;
 
     // Layout is designed at this size and scaled when the window is resized.
-    static constexpr int baseWidth = 760, baseHeight = 400;
+    static constexpr int baseWidth = 760, baseHeight = 440;
 
     void timerCallback() override;
     void setupKnob (juce::Slider&, juce::Label&, const juce::String& name, const juce::String& paramId,
@@ -32,8 +32,8 @@ private:
     HeftLookAndFeel lookAndFeel;
     juce::TooltipWindow tooltipWindow { this, 700 };
 
-    juce::Slider fatnessKnob, colorKnob, outputKnob;
-    juce::Label fatnessLabel, colorLabel, outputLabel;
+    juce::Slider fatnessKnob, colorKnob, mixKnob, outputKnob;
+    juce::Label fatnessLabel, colorLabel, mixLabel, outputLabel;
     juce::ToggleButton clipperButton { "Clipper" }, levelMatchButton { "Level Match" };
     juce::Label levelMatchReadout;
 
@@ -42,7 +42,7 @@ private:
     GainReductionMeter gainReductionMeter;
 
     // Attachments come after the controls so they are destroyed before them.
-    SliderAttachment fatnessAttachment, colorAttachment, outputAttachment;
+    SliderAttachment fatnessAttachment, colorAttachment, mixAttachment, outputAttachment;
     ButtonAttachment clipperAttachment, levelMatchAttachment;
 
     std::atomic<float>* fatnessParam    = nullptr;

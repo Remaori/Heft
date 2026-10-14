@@ -11,6 +11,7 @@ namespace ParamIDs
     inline constexpr auto output     = "output";
     inline constexpr auto clipper    = "clipper";
     inline constexpr auto levelMatch = "levelMatch";
+    inline constexpr auto mix        = "mix";
 }
 
 inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
@@ -37,6 +38,10 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { ParamIDs::clipper, 1 }, "Clipper", false));
 
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { ParamIDs::levelMatch, 1 }, "Level Match", false));
+
+    // Added in 0.3.0. New parameters go at the end so existing automation keeps its indices.
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { ParamIDs::mix, 1 }, "Mix",
+                                                       NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.0f, percent));
 
     return layout;
 }

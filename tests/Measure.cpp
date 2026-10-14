@@ -1,13 +1,19 @@
-// HeftMeasure: loads Heft.vst3 the way a DAW would, feeds it test signals
-// and measures the result. Use it to check that changes to Tuning.h don't
-// break anything (transparency, latency, clipper ceiling, level match).
+// HeftMeasure: loads Heft.vst3 the way a DAW would, feeds it test signals and
+// measures the result. Use it to check that changes to Tuning.h don't break
+// anything: latency, transparency, dry/wet alignment, clipper peaks (sample and
+// true peak), level match (K-weighted loudness), bypass crossfade and CPU use.
 //
 // Usage:  HeftMeasure.exe "path\to\Heft.vst3"
 
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <juce_dsp/juce_dsp.h>
 
+#include "DSP/KWeighting.h"
+
+#include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <functional>
 #include <map>
 #include <vector>
 
@@ -19,7 +25,7 @@ constexpr double kPi         = juce::MathConstants<double>::pi;
 
 struct Settings
 {
-    float fatness = 0.0f, color = 50.0f, outputDb = 0.0f;
+    float fatness = 0.0f, color = 50.0f, outputDb = 0.0f, mix = 100.0f;
     bool  clipper = false, levelMatch = false;
 };
 
@@ -41,12 +47,15 @@ public:
         return set ("Fatness", s.fatness / 100.0f)
             && set ("Color", s.color / 100.0f)
             && set ("Output", (s.outputDb + 24.0f) / 36.0f)
+            && set ("Mix", s.mix / 100.0f)
             && set ("Clipper", s.clipper ? 1.0f : 0.0f)
             && set ("Level Match", s.levelMatch ? 1.0f : 0.0f);
     }
 
     // Same signal on both channels. Returns the processed left channel.
-    std::vector<float> run (const std::vector<float>& input)
+    // beforeBlock (if given) is called with the start sample of every block.
+    std::vector<float> run (const std::vector<float>& input,
+                            const std::function<void (size_t)>& beforeBlock = {})
     {
         std::vector<float> output (input.size());
         juce::AudioBuffer<float> buffer (2, kBlockSize);
@@ -54,6 +63,9 @@ public:
 
         for (size_t start = 0; start < input.size(); start += kBlockSize)
         {
+            if (beforeBlock)
+                beforeBlock (start);
+
             const auto n = (int) std::min<size_t> (kBlockSize, input.size() - start);
             buffer.setSize (2, n, false, false, true);
 
@@ -66,6 +78,18 @@ public:
         }
 
         return output;
+    }
+
+    // The host-side bypass (the VST3 "bypass" parameter). False if the plugin has none.
+    bool setBypass (bool shouldBypass)
+    {
+        auto* bypass = plugin->getBypassParameter();
+
+        if (bypass == nullptr)
+            return false;
+
+        bypass->setValueNotifyingHost (shouldBypass ? 1.0f : 0.0f);
+        return true;
     }
 
     int latency() const { return plugin->getLatencySamples(); }
@@ -89,18 +113,18 @@ private:
     std::map<juce::String, juce::AudioProcessorParameter*> params;
 };
 
-std::vector<float> sine (double freq, double amplitude, double seconds)
+std::vector<float> sine (double freq, double amplitude, double seconds, double phase = 0.0)
 {
     std::vector<float> s ((size_t) (seconds * kSampleRate));
 
     for (size_t i = 0; i < s.size(); ++i)
-        s[i] = (float) (amplitude * std::sin (2.0 * kPi * freq * (double) i / kSampleRate));
+        s[i] = (float) (amplitude * std::sin (2.0 * kPi * freq * (double) i / kSampleRate + phase));
 
     return s;
 }
 
-// Kick-like hits (decaying 60 Hz sine) every 250 ms, peaking at "peak".
-std::vector<float> drumHits (double peak, double seconds)
+// Kick-like hits (decaying sine at "freq") every 250 ms, peaking at "peak".
+std::vector<float> drumHits (double peak, double seconds, double freq = 60.0)
 {
     std::vector<float> s ((size_t) (seconds * kSampleRate));
     const auto period = (size_t) (0.25 * kSampleRate);
@@ -108,15 +132,26 @@ std::vector<float> drumHits (double peak, double seconds)
     for (size_t i = 0; i < s.size(); ++i)
     {
         const auto t = (double) (i % period) / kSampleRate;
-        s[i] = (float) (peak * std::exp (-t / 0.06) * std::sin (2.0 * kPi * 60.0 * t));
+        s[i] = (float) (peak * std::exp (-t / 0.06) * std::sin (2.0 * kPi * freq * t));
     }
+
+    return s;
+}
+
+std::vector<float> noise (double amplitude, double seconds)
+{
+    juce::Random random (1234);
+    std::vector<float> s ((size_t) (seconds * kSampleRate));
+
+    for (auto& x : s)
+        x = (float) (amplitude * (2.0 * random.nextDouble() - 1.0));
 
     return s;
 }
 
 struct Analysis
 {
-    double fundamental = 0, thdnDb = 0, h2Db = 0, h3Db = 0, peak = 0, dc = 0;
+    double fundamental = 0, phase = 0, thdnDb = 0, h2Db = 0, h3Db = 0, peak = 0, dc = 0;
     bool finite = true;
 };
 
@@ -155,6 +190,7 @@ Analysis analyse (const std::vector<float>& y, double f0)
 
     double s1, c1, s2, c2, s3, c3;
     a.fundamental = project (f0, s1, c1);
+    a.phase       = std::atan2 (c1, s1);
     const auto h2 = project (2.0 * f0, s2, c2);
     const auto h3 = project (3.0 * f0, s3, c3);
 
@@ -185,12 +221,80 @@ double rmsDb (const std::vector<float>& y)
     return 10.0 * std::log10 (std::max (sum / (double) n, 1.0e-24));
 }
 
+// K-weighted mean square of the last second, in dB (LUFS up to a constant offset).
+double loudnessDb (const std::vector<float>& y)
+{
+    KWeighting weighting;
+    weighting.prepare (kSampleRate);
+    const auto n = (size_t) kSampleRate;
+    double sum = 0.0;
+
+    for (size_t i = 0; i < y.size(); ++i)
+    {
+        const auto k = (double) weighting.processSample (y[i], 0);
+
+        if (i >= y.size() - n)
+            sum += k * k;
+    }
+
+    return 10.0 * std::log10 (std::max (sum / (double) n, 1.0e-24));
+}
+
+// Highest absolute value of the signal reconstructed at 4x, over the last second.
+double truePeak (const std::vector<float>& y)
+{
+    juce::dsp::Oversampling<float> os (1, 2, juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple, true, true);
+    os.initProcessing (kBlockSize);
+
+    const auto start = y.size() - (size_t) kSampleRate;
+    std::vector<float> chunk ((size_t) kBlockSize);
+    double peak = 0.0;
+
+    for (size_t pos = 0; pos < y.size(); pos += kBlockSize)
+    {
+        const auto n = std::min<size_t> (kBlockSize, y.size() - pos);
+        std::copy (y.begin() + (long) pos, y.begin() + (long) (pos + n), chunk.begin());
+
+        float* channels[] = { chunk.data() };
+        juce::dsp::AudioBlock<float> block (channels, 1, n);
+        const auto up = os.processSamplesUp (block);
+
+        if (pos >= start)
+            for (size_t i = 0; i < up.getNumSamples(); ++i)
+                peak = std::max (peak, (double) std::abs (up.getSample (0, (int) i)));
+
+        os.processSamplesDown (block);
+    }
+
+    return peak;
+}
+
+double toDbfs (double gain) { return 20.0 * std::log10 (std::max (gain, 1.0e-12)); }
+
 int failures = 0;
 
 void check (bool ok, const char* what)
 {
     std::printf ("  [%s] %s\n", ok ? " OK " : "FAIL", what);
     failures += ok ? 0 : 1;
+}
+
+int measureLatency (Host& host, const Settings& settings)
+{
+    host.apply (settings);
+    host.run (std::vector<float> ((size_t) kSampleRate, 0.0f));   // let the smoothing settle
+
+    std::vector<float> impulse ((size_t) kSampleRate / 2, 0.0f);
+    const size_t at = 1000;
+    impulse[at] = 0.5f;
+    const auto y = host.run (impulse);
+
+    size_t peakIndex = 0;
+    for (size_t i = 0; i < y.size(); ++i)
+        if (std::abs (y[i]) > std::abs (y[peakIndex]))
+            peakIndex = i;
+
+    return (int) peakIndex - (int) at;
 }
 } // namespace
 
@@ -226,31 +330,39 @@ int main (int argc, char* argv[])
     Host host (std::move (instance));
     const auto amp = 0.5;   // -6 dBFS peak
 
-    // --- Latency ---------------------------------------------------------------
+    // --- Latency --------------------------------------------------------------
     std::printf ("\n== Latency ==\n");
     {
-        if (! host.apply ({ 0.0f, 50.0f, 0.0f, false, false }))
-            return 2;
+        // The impulse gives a rough figure (the filters' fractional-delay allpass can move
+        // the peak by a sample); the phase of a 1 kHz sine gives the exact delay.
+        const auto delayAt1k = [&] (const Settings& settings, int roughSamples)
+        {
+            host.apply (settings);
+            const auto in  = sine (1000.0, amp, 2.0);
+            const auto out = analyse (host.run (in), 1000.0);
+            const auto ref = analyse (in, 1000.0);
+            const auto period = kSampleRate / 1000.0;
+            const auto phaseDelay = (ref.phase - out.phase) / (2.0 * kPi) * period;
+            return roughSamples + std::remainder (phaseDelay - roughSamples, period);
+        };
 
-        host.run (std::vector<float> ((size_t) kSampleRate, 0.0f));   // let the smoothing settle
+        bool allOk = true;
 
-        std::vector<float> impulse ((size_t) kSampleRate / 2, 0.0f);
-        const size_t at = 1000;
-        impulse[at] = 0.5f;
-        const auto y = host.run (impulse);
+        for (const auto& [name, settings] : { std::pair { "wet          ", Settings { 0.0f, 50.0f, 0.0f, 100.0f, false, false } },
+                                              std::pair { "dry (Mix 0 %)", Settings { 0.0f, 50.0f, 0.0f, 0.0f, false, false } },
+                                              std::pair { "clipper on   ", Settings { 0.0f, 50.0f, 0.0f, 100.0f, true, false } } })
+        {
+            const auto rough = measureLatency (host, settings);
+            const auto exact = delayAt1k (settings, rough);
+            std::printf ("  %s impulse peak %d, delay at 1 kHz %.2f samples\n", name, rough, exact);
+            allOk = allOk && std::abs (exact - host.latency()) < 0.1;
+        }
 
-        size_t peakIndex = 0;
-        for (size_t i = 0; i < y.size(); ++i)
-            if (std::abs (y[i]) > std::abs (y[peakIndex]))
-                peakIndex = i;
-
-        const auto measured = (int) peakIndex - (int) at;
-        std::printf ("  Reported to the host: %d samples (%.2f ms at 48 kHz). Measured with an impulse: %d\n",
-                     host.latency(), 1000.0 * host.latency() / kSampleRate, measured);
-        check (std::abs (measured - host.latency()) <= 1, "reported latency matches the real one");
+        std::printf ("  Reported to the host: %d samples (%.2f ms at 48 kHz)\n", host.latency(), 1000.0 * host.latency() / kSampleRate);
+        check (allOk, "reported latency matches the real delay (wet, dry and clipper paths, within 0.1 samples)");
     }
 
-    // --- Transparency at Fatness 0 ------------------------------------------
+    // --- Transparency at Fatness 0 -----------------------------------------
     std::printf ("\n== Fatness 0 %% (must be transparent) ==\n");
     {
         bool allOk = true;
@@ -259,7 +371,7 @@ int main (int argc, char* argv[])
         {
             for (auto freq : { 100.0, 1000.0, 10000.0 })
             {
-                host.apply ({ 0.0f, color, 0.0f, false, false });
+                host.apply ({ 0.0f, color, 0.0f, 100.0f, false, false });
                 const auto a     = analyse (host.run (sine (freq, amp, 2.0)), freq);
                 const auto delta = 20.0 * std::log10 (a.fundamental / amp);
                 std::printf ("  Color %3.0f%%  %6.0f Hz: level change %+7.3f dB, THD+N %7.1f dB\n", color, freq, delta, a.thdnDb);
@@ -274,7 +386,7 @@ int main (int argc, char* argv[])
 
         for (auto freq : { 16000.0, 18000.0, 20000.0, 21000.0, 22000.0 })
         {
-            host.apply ({ 0.0f, 50.0f, 0.0f, false, false });
+            host.apply ({ 0.0f, 50.0f, 0.0f, 100.0f, false, false });
             const auto a = analyse (host.run (sine (freq, amp, 2.0)), freq);
             std::printf ("  %.0f kHz %+.2f dB", freq / 1000.0, 20.0 * std::log10 (a.fundamental / amp));
         }
@@ -282,7 +394,44 @@ int main (int argc, char* argv[])
         std::printf ("\n");
     }
 
-    // --- Character ---------------------------------------------------------------
+    // --- Mix ------------------------------------------------------------------
+    std::printf ("\n== Mix (dry/wet) ==\n");
+    {
+        // Dry and wet must be time-aligned: at Fatness 0 any Mix value stays transparent.
+        // A misaligned dry path would comb-filter, which shows up most at 10 kHz.
+        bool aligned = true;
+
+        for (auto freq : { 100.0, 1000.0, 10000.0, 15000.0, 20000.0 })
+        {
+            host.apply ({ 0.0f, 50.0f, 0.0f, 50.0f, false, false });
+            const auto a     = analyse (host.run (sine (freq, amp, 2.0)), freq);
+            const auto delta = 20.0 * std::log10 (a.fundamental / amp);
+            std::printf ("  Fatness 0 %%, Mix 50 %%  %6.0f Hz: level change %+7.3f dB, THD+N %7.1f dB\n", freq, delta, a.thdnDb);
+            aligned = aligned && std::abs (delta) < 0.1 && a.thdnDb < -80.0;
+        }
+
+        check (aligned, "dry and wet are time-aligned (Mix 50 % at Fatness 0 stays within ±0.1 dB)");
+
+        host.apply ({ 100.0f, 100.0f, 0.0f, 0.0f, false, false });
+        const auto dry = analyse (host.run (sine (1000.0, amp, 2.0)), 1000.0);
+        std::printf ("  Fatness 100 %%, Mix 0 %%: level change %+.3f dB, THD+N %.1f dB\n",
+                     20.0 * std::log10 (dry.fundamental / amp), dry.thdnDb);
+        check (std::abs (20.0 * std::log10 (dry.fundamental / amp)) < 0.05 && dry.thdnDb < -80.0,
+               "Mix 0 % returns the clean input even at Fatness 100 %");
+
+        std::printf ("  Kick-like hits, Fatness 100 %%: RMS change by Mix:");
+        const auto input = drumHits (amp, 3.0);
+
+        for (auto mix : { 0.0f, 25.0f, 50.0f, 75.0f, 100.0f })
+        {
+            host.apply ({ 100.0f, 50.0f, 0.0f, mix, false, false });
+            std::printf ("  %.0f%% %+.2f dB", mix, rmsDb (host.run (input)) - rmsDb (input));
+        }
+
+        std::printf ("\n");
+    }
+
+    // --- Character -----------------------------------------------------------
     std::printf ("\n== Character with a 1 kHz sine at -6 dBFS ==\n");
     std::printf ("  Fatness  Color   Level dB   THD+N dB   H2 dB    H3 dB    Peak    DC\n");
     {
@@ -292,7 +441,7 @@ int main (int argc, char* argv[])
         {
             for (auto color : { 0.0f, 50.0f, 100.0f })
             {
-                host.apply ({ fatness, color, 0.0f, false, false });
+                host.apply ({ fatness, color, 0.0f, 100.0f, false, false });
                 const auto a = analyse (host.run (sine (1000.0, amp, 2.0)), 1000.0);
                 std::printf ("  %5.0f%%  %4.0f%%   %+7.2f   %8.1f  %7.1f  %7.1f   %5.3f  %+.4f\n",
                              fatness, color, 20.0 * std::log10 (a.fundamental / amp), a.thdnDb, a.h2Db, a.h3Db, a.peak, a.dc);
@@ -311,7 +460,7 @@ int main (int argc, char* argv[])
 
         for (auto fatness : { 25.0f, 50.0f, 75.0f, 100.0f })
         {
-            host.apply ({ fatness, 50.0f, 0.0f, false, false });
+            host.apply ({ fatness, 50.0f, 0.0f, 100.0f, false, false });
             const auto y = host.run (input);
             const auto a = analyse (y, 60.0);
             std::printf ("  Fatness %3.0f%%: RMS %+6.2f dB, peak %+6.2f dB\n",
@@ -322,35 +471,143 @@ int main (int argc, char* argv[])
     // --- Clipper -----------------------------------------------------------------------
     std::printf ("\n== Clipper ==\n");
     {
-        host.apply ({ 50.0f, 50.0f, 12.0f, true, false });
-        const auto a = analyse (host.run (sine (200.0, 0.9, 2.0)), 200.0);
-        std::printf ("  Fatness 50 %%, Output +12 dB, input at -0.9 dBFS: output peak %.4f\n", a.peak);
-        check (a.peak <= 1.0, "the peak never exceeds 0 dBFS with the clipper on");
-    }
+        // Below the knee the clipper must not change anything, including the timing:
+        // its 4x path and the delay used while it's off must line up exactly
+        // (one sample at 10 kHz would be 75 degrees).
+        bool transparent = true;
 
-    // --- Level Match -----------------------------------------------------------------------
-    std::printf ("\n== Level Match ==\n");
-    {
-        bool allOk = true;
-
-        for (auto [fatness, color, freq, level] : { std::tuple { 100.0f, 100.0f, 1000.0, 0.5 },
-                                                    std::tuple { 100.0f, 0.0f, 100.0, 0.5 },
-                                                    std::tuple { 60.0f, 50.0f, 440.0, 0.1 } })
+        for (auto freq : { 1000.0, 10000.0 })
         {
-            const auto input = sine (freq, level, 4.0);
+            host.apply ({ 0.0f, 50.0f, 0.0f, 100.0f, false, false });
+            const auto off = analyse (host.run (sine (freq, 0.3, 2.0)), freq);
+            host.apply ({ 0.0f, 50.0f, 0.0f, 100.0f, true, false });
+            const auto on = analyse (host.run (sine (freq, 0.3, 2.0)), freq);
 
-            host.apply ({ fatness, color, 0.0f, false, false });
-            const auto off = rmsDb (host.run (input)) - rmsDb (input);
-
-            host.apply ({ fatness, color, 0.0f, false, true });
-            const auto on = rmsDb (host.run (input)) - rmsDb (input);
-
-            std::printf ("  Fatness %3.0f%% Color %3.0f%% %5.0f Hz: level change unmatched %+6.2f dB, matched %+6.2f dB\n",
-                         fatness, color, freq, off, on);
-            allOk = allOk && std::abs (on) < 0.5;
+            const auto levelDb  = 20.0 * std::log10 (on.fundamental / off.fundamental);
+            const auto phaseDeg = std::remainder (on.phase - off.phase, 2.0 * kPi) * 180.0 / kPi;
+            std::printf ("  Below the knee, %5.0f Hz: clipper on vs off %+.3f dB, %+.2f degrees, THD+N %.1f dB\n",
+                         freq, levelDb, phaseDeg, on.thdnDb);
+            transparent = transparent && std::abs (levelDb) < 0.1 && std::abs (phaseDeg) < 2.0 && on.thdnDb < -80.0;
         }
 
-        check (allOk, "with Level Match the difference stays below ±0.5 dB");
+        check (transparent, "below the knee the clipper changes nothing (same level and phase as with it off)");
+
+        struct Case { const char* name; std::vector<float> input; };
+
+        // A 12 kHz sine with a 45° phase has its samples at 0.71 of the true peak: the
+        // classic inter-sample peak test.
+        const Case cases[] = { { "200 Hz, input -0.9 dBFS  ", sine (200.0, 0.9, 2.0) },
+                               { "12 kHz at 45°, input -0.9 dBTP", sine (12000.0, 0.9, 2.0, 0.25 * kPi) },
+                               { "kick hits, input -0.9 dBFS ", drumHits (0.9, 3.0) } };
+
+        bool samplePeaksOk = true, truePeaksOk = true;
+
+        for (const auto& c : cases)
+        {
+            host.apply ({ 50.0f, 50.0f, 12.0f, 100.0f, true, false });
+            const auto y = host.run (c.input);
+            const auto a = analyse (y, 200.0);
+            const auto tp = truePeak (y);
+            std::printf ("  Fatness 50 %%, Output +12 dB, %s: sample peak %.4f (%+.2f dBFS), true peak %+.2f dBTP\n",
+                         c.name, a.peak, toDbfs (a.peak), toDbfs (tp));
+            samplePeaksOk = samplePeaksOk && a.peak <= 1.0;
+            truePeaksOk   = truePeaksOk && toDbfs (tp) <= 0.5;
+        }
+
+        check (samplePeaksOk, "sample peaks never exceed 0 dBFS with the clipper on");
+        check (truePeaksOk, "true peaks (4x reconstruction) stay below +0.5 dBTP");
+    }
+
+    // --- Level Match -----------------------------------------------------------------
+    std::printf ("\n== Level Match (compared as K-weighted loudness, like LUFS) ==\n");
+    {
+        struct Case { float fatness, color; const char* name; std::vector<float> input; };
+
+        const Case cases[] = { { 100.0f, 100.0f, "1 kHz sine, -6 dBFS   ", sine (1000.0, 0.5, 4.0) },
+                               { 100.0f,   0.0f, "100 Hz sine, -6 dBFS  ", sine (100.0, 0.5, 4.0) },
+                               {  60.0f,  50.0f, "440 Hz sine, -20 dBFS ", sine (440.0, 0.1, 4.0) },
+                               {  80.0f,  30.0f, "55 Hz kick hits      ", drumHits (0.5, 4.0, 55.0) } };
+
+        bool allOk = true;
+
+        for (const auto& c : cases)
+        {
+            host.apply ({ c.fatness, c.color, 0.0f, 100.0f, false, false });
+            const auto off = host.run (c.input);
+
+            host.apply ({ c.fatness, c.color, 0.0f, 100.0f, false, true });
+            const auto on = host.run (c.input);
+
+            const auto inLoudness = loudnessDb (c.input);
+            std::printf ("  Fatness %3.0f%% Color %3.0f%% %s: loudness change unmatched %+6.2f dB, matched %+6.2f dB (RMS %+6.2f dB)\n",
+                         c.fatness, c.color, c.name, loudnessDb (off) - inLoudness, loudnessDb (on) - inLoudness,
+                         rmsDb (on) - rmsDb (c.input));
+            allOk = allOk && std::abs (loudnessDb (on) - inLoudness) < 0.5;
+        }
+
+        check (allOk, "with Level Match the loudness difference stays below ±0.5 dB");
+    }
+
+    // --- Bypass ------------------------------------------------------------------------
+    std::printf ("\n== Bypass (host) ==\n");
+    {
+        // Wet is 12 dB louder than dry, and we switch where the sine is near its peak:
+        // a hard switch would jump by ~0.5; the crossfade keeps every step small.
+        host.apply ({ 0.0f, 50.0f, 12.0f, 100.0f, false, false });
+        const auto input = sine (50.0, 0.2, 3.0);
+        bool switched = false, supported = true;
+
+        const auto y = host.run (input, [&] (size_t start)
+        {
+            const auto nearPeak = std::abs (input[start]) > 0.18f;
+
+            if (! switched && start >= 48000 && nearPeak)
+            {
+                supported = host.setBypass (true);
+                switched = true;
+            }
+            else if (switched && start >= 96000 && nearPeak)
+            {
+                host.setBypass (false);
+            }
+        });
+
+        host.setBypass (false);
+
+        if (! supported)
+        {
+            std::printf ("  (the hosted plugin exposes no bypass parameter: skipped)\n");
+        }
+        else
+        {
+            double maxStep = 0.0;
+
+            for (size_t i = 24000; i < y.size(); ++i)
+                maxStep = std::max (maxStep, (double) std::abs (y[i] - y[i - 1]));
+
+            const auto steadyStep = 0.8 * 2.0 * kPi * 50.0 / kSampleRate;
+            std::printf ("  Largest sample-to-sample step: %.4f (steady 50 Hz sine: %.4f)\n", maxStep, steadyStep);
+            check (maxStep < 3.0 * steadyStep, "switching the bypass on and off doesn't click");
+        }
+    }
+
+    // --- CPU ---------------------------------------------------------------------------
+    std::printf ("\n== CPU (stereo, 48 kHz, %d-sample blocks, 20 s of noise) ==\n", kBlockSize);
+    {
+        const auto input = noise (0.25, 20.0);
+
+        for (const auto& [name, settings] : { std::pair { "Defaults (Mix 100 %, clipper off)    ", Settings { 25.0f, 50.0f, 0.0f, 100.0f, false, false } },
+                                              std::pair { "Everything on (Mix 70 %, clipper, LM)", Settings { 60.0f, 60.0f, 0.0f, 70.0f, true, true } } })
+        {
+            host.apply (settings);
+            host.run (noise (0.25, 1.0));   // warm-up
+
+            const auto t0 = std::chrono::steady_clock::now();
+            host.run (input);
+            const auto seconds = std::chrono::duration<double> (std::chrono::steady_clock::now() - t0).count();
+
+            std::printf ("  %s: %.2f %% of one core (%.0fx real time)\n", name, 100.0 * seconds / 20.0, 20.0 / seconds);
+        }
     }
 
     std::printf ("\n%s\n", failures == 0 ? "ALL MEASUREMENTS OK" : "SOME MEASUREMENTS FAILED");

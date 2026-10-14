@@ -40,11 +40,14 @@ namespace tuning
     // --- 7. Output ----------------------------------------------------------
     inline constexpr float clipperKnee           = 0.75f;   // linear below this (0.75 ~ -2.5 dBFS)
     inline constexpr float clipperCeiling        = 1.0f;    // clipper ceiling (1.0 = 0 dBFS)
-    inline constexpr float levelMatchWindowSec   = 0.4f;    // RMS measurement window
+    inline constexpr int   clipperOversamplingFactorLog2 = 2;   // 4x: less aliasing, catches most
+                                                                // inter-sample peaks; adds latency
+    inline constexpr float levelMatchWindowSec   = 0.4f;    // loudness window (0.4 s = BS.1770 momentary)
     inline constexpr float levelMatchGlideSec    = 0.05f;   // smoothing of the compensation gain
     inline constexpr float levelMatchRangeDb     = 24.0f;   // maximum correction (+/-)
     inline constexpr float levelMatchGateDb      = -60.0f;  // below this it stops re-measuring (silence)
 
-    // --- Parameter smoothing ------------------------------------------------
+    // --- Parameter smoothing and bypass -------------------------------------
     inline constexpr double paramSmoothingSec    = 0.05;
+    inline constexpr double bypassFadeSec        = 0.03;    // crossfade when the host bypass toggles
 }

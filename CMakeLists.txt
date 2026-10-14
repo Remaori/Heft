@@ -74,6 +74,7 @@ set_target_properties(HeftMeasure PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
 target_compile_features(HeftMeasure PRIVATE cxx_std_20)
 target_sources(HeftMeasure PRIVATE tests/Measure.cpp)
+target_include_directories(HeftMeasure PRIVATE Source)   # reuses Source/DSP/KWeighting.h
 
 target_compile_definitions(HeftMeasure
     PRIVATE
@@ -85,6 +86,7 @@ target_compile_definitions(HeftMeasure
 target_link_libraries(HeftMeasure
     PRIVATE
         juce::juce_audio_processors
+        juce::juce_dsp
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags
