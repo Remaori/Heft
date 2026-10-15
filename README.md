@@ -122,7 +122,7 @@ release step fails and nothing is published.
    your `%USERPROFILE%\VST3` folder, e.g. `C:\Users\<you>\VST3`. (You can also type
    `;C:\Users\<you>\VST3` at the end of the field.)
 3. Click **Re-scan** (or *Clear cache/re-scan*).
-4. It shows up in the FX browser as **VST3: Heft (Ran)**.
+4. It shows up in the FX browser as **VST3: Heft (Remaori)**.
 
 After rebuilding, just close and reopen REAPER. If you changed parameters
 (names, ranges), also do a **Re-scan**.

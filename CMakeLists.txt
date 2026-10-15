@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(Heft VERSION 0.3.0 LANGUAGES C CXX)
+project(Heft VERSION 0.3.1 LANGUAGES C CXX)
 
 # Link the C++ runtime statically: the .vst3 does not depend on the Visual C++
 # DLLs and runs on any 64-bit Windows.
@@ -19,7 +19,7 @@ FetchContent_MakeAvailable(JUCE)
 
 # --- The plugin ---------------------------------------------------------------
 juce_add_plugin(Heft
-    COMPANY_NAME                "Ran"
+    COMPANY_NAME                "Remaori"
     PLUGIN_MANUFACTURER_CODE    Rnau
     PLUGIN_CODE                 Hft1
     FORMATS                     VST3
