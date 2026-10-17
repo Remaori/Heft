@@ -190,7 +190,9 @@ If REAPER is open with the plugin loaded, the script stops and tells you
 A tag never publishes anything by itself: it creates a **draft** release, which nobody
 else sees until you publish it after testing.
 
-1. Bump the version in `CMakeLists.txt` (`project(Heft VERSION 0.4.2 ...)`) and commit it.
+1. Bump the version in `CMakeLists.txt` (`project(Heft VERSION 0.4.2 ...)`), move the notes
+   under **Unreleased** in [`CHANGELOG.md`](CHANGELOG.md) to a new `## 0.4.2` section, and
+   commit both. That section becomes the text of the release; without it, no draft is created.
 2. Tag the commit and push both:
 
    ```powershell
@@ -264,6 +266,7 @@ tests/Measure.cpp         HeftMeasure: loads the VST3 and measures it (build.ps1
 tests/Tests.cpp           HeftTests: unit tests for presets, A/B and project state (build.ps1 -Measure)
 .github/workflows/        GitHub Actions: build + pluginval + HeftMeasure + HeftTests; releases on v* tags
 docs/screenshot.png       UI screenshot used in this README
+CHANGELOG.md              What changed in each version (also the text of each release)
 LICENSE                   GNU AGPL v3
 THIRD_PARTY_NOTICES.txt   Licenses of the third-party code inside the plugin binary
 ```
