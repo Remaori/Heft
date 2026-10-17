@@ -28,6 +28,7 @@ namespace PresetFile
     inline constexpr juce::int64 maxFileBytes = 64 * 1024;   // a preset is < 1 KB; refuse anything huge
     inline constexpr int maxNameLength = 64;
     inline const juce::String extension { ".heftpreset" };
+    inline const juce::String tempExtension { ".heftpreset-tmp" };   // a save in progress
     inline const juce::String rootTag { "HeftPreset" };
 
     // Range and default of each preset parameter, taken from the plugin's own
@@ -163,31 +164,48 @@ namespace PresetFile
 
     // Atomic write: to a temporary file first, then it replaces the target. A failure
     // half-way never leaves a broken preset behind.
+    //
+    // The temporary file is ".Name.<random>.heftpreset-tmp" in the same folder: the same
+    // disk, so replacing is a rename, and it doesn't end in .heftpreset, so a save cut
+    // short (Heft or the DAW closing mid-save) never shows up as a broken preset. Old
+    // leftovers are removed by PresetManager::refreshList().
     inline juce::Result write (const juce::File& file, const Values& values, const Specs& specs,
                                const juce::String& pluginVersion)
     {
-        juce::TemporaryFile temp (file);
+        const auto temp = file.getSiblingFile ("." + file.getFileNameWithoutExtension() + "."
+                                               + juce::String::toHexString (juce::Random::getSystemRandom().nextInt64())
+                                               + tempExtension);
+
+        const auto fail = [&] (const juce::String& reason)
+        {
+            temp.deleteFile();
+            return juce::Result::fail ("Couldn't save \"" + file.getFullPathName() + "\"" + reason);
+        };
 
         {
-            juce::FileOutputStream out (temp.getFile());
+            juce::FileOutputStream out (temp);
 
             if (! out.openedOk())
-                return juce::Result::fail ("Couldn't save \"" + file.getFullPathName() + "\": "
-                                           + out.getStatus().getErrorMessage());
+                return fail (": " + out.getStatus().getErrorMessage());
 
             out.writeText (toXml (values, specs, pluginVersion), false, false, "\r\n");
             out.flush();
 
             if (out.getStatus().failed())
-                return juce::Result::fail ("Couldn't save \"" + file.getFullPathName() + "\": "
-                                           + out.getStatus().getErrorMessage());
+                return fail (": " + out.getStatus().getErrorMessage());
         }
 
-        if (! temp.overwriteTargetFileWithTemporary())
-            return juce::Result::fail ("Couldn't save \"" + file.getFullPathName()
-                                       + "\". The file may be read-only or in use by another program.");
+        // A few tries: antivirus or OneDrive can hold the target for a moment.
+        for (int attempt = 1; attempt <= 3; ++attempt)
+        {
+            if (temp.replaceFileIn (file))
+                return juce::Result::ok();
 
-        return juce::Result::ok();
+            if (attempt < 3)
+                juce::Thread::sleep (100);
+        }
+
+        return fail (". The file may be read-only or in use by another program.");
     }
 
     // Returns an empty string if the name can be used for a file, otherwise why not.

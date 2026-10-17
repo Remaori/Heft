@@ -162,9 +162,13 @@ void testPresetFile (HeftAudioProcessor& processor, const juce::File& scratch)
                "writing over a read-only file fails with the path in the message");
         Values stillThere {};
         check (read (locked, specs, stillThere).wasOk() && stillThere == v, "the read-only file is left intact");
+        check (scratch.findChildFiles (juce::File::findFiles, false, "*" + tempExtension).isEmpty(),
+               "a failed write leaves no temporary file");
         locked.setReadOnly (false);
 
-        check (scratch.findChildFiles (juce::File::findFiles, false, "*.tmp").isEmpty(), "no temporary files left behind");
+        check (scratch.findChildFiles (juce::File::findFiles, false, "*" + tempExtension).isEmpty()
+                   && scratch.findChildFiles (juce::File::findFiles, false, "*.tmp").isEmpty(),
+               "successful writes leave no temporary files");
     }
     endSection();
 
@@ -694,6 +698,40 @@ void testFolderAvailability (HeftAudioProcessor& processor, const juce::File& sc
     endSection();
 }
 
+//==============================================================================
+void testTemporaryFiles (HeftAudioProcessor& processor, const juce::File& scratch)
+{
+    section ("Temporary files of a save never show up as presets");
+    {
+        const auto folder = scratch.getChildFile ("Temp files");
+        PresetManager manager (processor.apvts, folder);
+
+        check (manager.saveAs ("Kick").wasOk()
+                   && folder.findChildFiles (juce::File::findFiles, false, "*").size() == 1,
+               "a successful save leaves only the preset");
+
+        // Leftovers of interrupted saves: one old, one recent, plus files that must be left alone.
+        const auto now = juce::Time::getCurrentTime();
+        const auto old = folder.getChildFile (".Kick.0123456789abcdef.heftpreset-tmp");
+        const auto recent = folder.getChildFile (".Snare.fedcba9876543210.heftpreset-tmp");
+        const auto notes = folder.getChildFile ("notes.txt");
+        const auto backup = folder.getChildFile ("Kick.heftpreset-tmp.bak");
+
+        for (const auto& file : { old, recent, notes, backup })
+            file.replaceWithText ("<HeftPreset/>");
+
+        for (const auto& file : { old, notes, backup })
+            file.setLastModificationTime (now - juce::RelativeTime::minutes (11));
+
+        manager.refreshList();
+        check (! old.exists(), "a temporary file older than 10 minutes is deleted");
+        check (recent.exists(), "a recent one is kept (another Heft may be writing it)");
+        check (notes.exists() && backup.exists(), "nothing else is ever deleted");
+        check (userNames (manager) == juce::StringArray { "Kick" }, "temporary files are never listed");
+    }
+    endSection();
+}
+
 } // namespace
 
 int main()
@@ -708,6 +746,7 @@ int main()
         testPresetFile (processor, scratch.folder);
         testPresetManager (processor, scratch.folder);
         testFolderAvailability (processor, scratch.folder);
+        testTemporaryFiles (processor, scratch.folder);
     }
 
     testProjectState();

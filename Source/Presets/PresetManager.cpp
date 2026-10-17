@@ -143,10 +143,11 @@ void PresetManager::refreshList()
     for (const auto& preset : factoryPresets)
         entries.push_back ({ { Source::factory, preset.name }, {} });
 
-    if (userFolder.isDirectory())
+    removeStaleTemporaryFiles();
+
     {
-        // Only .heftpreset files directly in the folder; natural order ("Kick 2" before "Kick 10").
-        auto files = userFolder.findChildFiles (juce::File::findFiles, false, "*" + PresetFile::extension);
+        // Natural order: "Kick 2" before "Kick 10".
+        auto files = userPresetFiles();
 
         std::sort (files.begin(), files.end(), [] (const juce::File& a, const juce::File& b)
                    { return a.getFileNameWithoutExtension().compareNatural (b.getFileNameWithoutExtension()) < 0; });
@@ -310,12 +311,41 @@ juce::Result PresetManager::ensureUserFolder()
 
 juce::File PresetManager::userFileFor (const juce::String& name) const
 {
-    if (userFolder.isDirectory())
-        for (const auto& file : userFolder.findChildFiles (juce::File::findFiles, false, "*" + PresetFile::extension))
-            if (file.getFileNameWithoutExtension().equalsIgnoreCase (name))
-                return file;
+    for (const auto& file : userPresetFiles())
+        if (file.getFileNameWithoutExtension().equalsIgnoreCase (name))
+            return file;
 
     return userFolder.getChildFile (name + PresetFile::extension);
+}
+
+// Only files directly in the folder whose extension is exactly .heftpreset (any case):
+// "Kick.heftpreset" yes, ".Kick.1a2b.heftpreset-tmp" no.
+juce::Array<juce::File> PresetManager::userPresetFiles() const
+{
+    juce::Array<juce::File> presets;
+
+    if (userFolder.isDirectory())
+        for (const auto& file : userFolder.findChildFiles (juce::File::findFiles, false, "*"))
+            if (file.getFileExtension().equalsIgnoreCase (PresetFile::extension)
+                && file.getFileNameWithoutExtension().isNotEmpty())
+                presets.add (file);
+
+    return presets;
+}
+
+// Leftovers of saves that were cut short. Only that exact extension, and only when
+// older than 10 minutes, so a save that another Heft instance is doing right now is
+// never touched.
+void PresetManager::removeStaleTemporaryFiles() const
+{
+    if (! userFolder.isDirectory())
+        return;
+
+    const auto cutoff = juce::Time::getCurrentTime() - juce::RelativeTime::minutes (10);
+
+    for (const auto& file : userFolder.findChildFiles (juce::File::findFiles, false, "*"))
+        if (file.getFileExtension().equalsIgnoreCase (PresetFile::tempExtension) && file.getLastModificationTime() < cutoff)
+            file.deleteFile();
 }
 
 bool PresetManager::userPresetExists (const juce::String& name) const
