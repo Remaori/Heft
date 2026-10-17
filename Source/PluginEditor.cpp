@@ -62,6 +62,8 @@ HeftAudioProcessorEditor::HeftAudioProcessorEditor (HeftAudioProcessor& p)
                              static_cast<juce::Component*> (&gainReductionMeter), static_cast<juce::Component*> (&outputMeter) })
         addAndMakeVisible (component);
 
+    addAndMakeVisible (presetBar);
+
     fatnessParam    = p.apvts.getRawParameterValue (ParamIDs::fatness);
     colorParam      = p.apvts.getRawParameterValue (ParamIDs::color);
     levelMatchParam = p.apvts.getRawParameterValue (ParamIDs::levelMatch);
@@ -111,26 +113,40 @@ void HeftAudioProcessorEditor::paint (juce::Graphics& g)
                                              palette::backgroundLo, 0.0f, (float) getHeight(), false));
     g.fillAll();
 
-    // Header: wordmark, subtitle and version.
-    const auto header = getLocalBounds().toFloat().removeFromTop (headerHeight).reduced (22.0f * scale, 0.0f);
+    // Header: wordmark, subtitle and version. The preset bar fills the space between.
+    const auto header = getHeader();
 
-    const auto wordmark = palette::font (28.0f * scale, true).withExtraKerningFactor (0.16f);
     g.setColour (palette::text);
-    g.setFont (wordmark);
-    g.drawText ("HEFT", header, juce::Justification::centredLeft, false);
+    g.setFont (header.wordmark);
+    g.drawText ("HEFT", header.area, juce::Justification::centredLeft, false);
 
-    const auto wordmarkWidth = juce::GlyphArrangement::getStringWidth (wordmark, "HEFT");
     g.setColour (palette::accent);
-    g.setFont (palette::caption (11.0f * scale));
-    g.drawText ("FATTENER", header.withTrimmedLeft (wordmarkWidth + 10.0f * scale).translated (0.0f, 2.0f * scale),
+    g.setFont (header.subtitle);
+    g.drawText ("FATTENER", header.area.withLeft (header.subtitleX).translated (0.0f, 2.0f * scale),
                 juce::Justification::centredLeft, false);
 
     g.setColour (palette::textDim);
-    g.setFont (palette::font (12.0f * scale));
-    g.drawText ("v" JucePlugin_VersionString, header, juce::Justification::centredRight, false);
+    g.setFont (header.version);
+    g.drawText ("v" JucePlugin_VersionString, header.area, juce::Justification::centredRight, false);
 
     g.setColour (palette::panelEdge);
     g.fillRect (0.0f, headerHeight - 1.0f, (float) getWidth(), 1.0f);
+}
+
+HeftAudioProcessorEditor::Header HeftAudioProcessorEditor::getHeader() const
+{
+    const auto scale = (float) getWidth() / (float) baseWidth;
+
+    Header header;
+    header.area     = getLocalBounds().toFloat().removeFromTop (56.0f * scale).reduced (22.0f * scale, 0.0f);
+    header.wordmark = palette::font (28.0f * scale, true).withExtraKerningFactor (0.16f);
+    header.subtitle = palette::caption (11.0f * scale);
+    header.version  = palette::font (12.0f * scale);
+
+    header.subtitleX = header.area.getX() + juce::GlyphArrangement::getStringWidth (header.wordmark, "HEFT") + 10.0f * scale;
+    header.freeLeft  = header.subtitleX + juce::GlyphArrangement::getStringWidth (header.subtitle, "FATTENER");
+    header.freeRight = header.area.getRight() - juce::GlyphArrangement::getStringWidth (header.version, "v" JucePlugin_VersionString);
+    return header;
 }
 
 void HeftAudioProcessorEditor::resized()
@@ -139,6 +155,16 @@ void HeftAudioProcessorEditor::resized()
     const auto px = [scale] (float value) { return juce::roundToInt (value * scale); };
 
     processor.editorWidth = getWidth();
+
+    // Preset bar: centred in the header's free space, same height at every scale.
+    {
+        const auto header = getHeader();
+        const auto width  = (float) PresetBar::preferredWidth * scale;
+        const auto height = (float) PresetBar::preferredHeight * scale;
+        const auto x = juce::jlimit (header.freeLeft, juce::jmax (header.freeLeft, header.freeRight - width),
+                                     (header.freeLeft + header.freeRight - width) * 0.5f);
+        presetBar.setBounds (juce::Rectangle<float> (x, header.area.getCentreY() - height * 0.5f, width, height).toNearestInt());
+    }
 
     auto content = getLocalBounds().withTrimmedTop (px (56.0f)).reduced (px (22.0f), px (18.0f));
 
@@ -220,4 +246,5 @@ void HeftAudioProcessorEditor::timerCallback()
     }
 
     levelMatchReadout.setText (readout, juce::dontSendNotification);
+    presetBar.refresh();
 }

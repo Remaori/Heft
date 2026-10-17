@@ -4,6 +4,7 @@
 #include "UI/CurveDisplay.h"
 #include "UI/HeftLookAndFeel.h"
 #include "UI/Meters.h"
+#include "UI/PresetBar.h"
 
 class HeftAudioProcessorEditor final : public juce::AudioProcessorEditor, private juce::Timer
 {
@@ -26,11 +27,24 @@ private:
                     const juce::String& tooltip);
     void layoutKnob (juce::Slider&, juce::Label&, juce::Rectangle<int> area, float scale, bool large);
 
+    // Where the header's texts go, shared by paint() and resized() so the preset bar
+    // sits centred in the free space between "FATTENER" and the version.
+    struct Header
+    {
+        juce::Rectangle<float> area;
+        juce::Font wordmark, subtitle, version;
+        float subtitleX = 0.0f, freeLeft = 0.0f, freeRight = 0.0f;
+    };
+
+    Header getHeader() const;
+
     HeftAudioProcessor& processor;
 
     // The look and feel must outlive every component that uses it, so it is declared first.
     HeftLookAndFeel lookAndFeel;
     juce::TooltipWindow tooltipWindow { this, 700 };
+
+    PresetBar presetBar { processor.presetManager };
 
     juce::Slider fatnessKnob, colorKnob, mixKnob, outputKnob;
     juce::Label fatnessLabel, colorLabel, mixLabel, outputLabel;
