@@ -107,7 +107,8 @@ Mix 100 %, Output 0 dB, Clipper off) is always first.
 To add one: set Heft up in your DAW, save it as a user preset, copy the file from
 `Documents\Heft\Presets` to `Presets/Factory/` in this repository, and rebuild. Name
 the files `01 Name.heftpreset`, `02 Name.heftpreset`… to choose the order; the
-number isn't shown. (0.4.0 ships one placeholder, *Parallel*.)
+number isn't shown. *Parallel* is provisional: it will be tuned again by ear,
+together with the rest of the factory presets.
 
 > **Presets store knob positions, not sound.** If you change the numbers in
 > `Source/Tuning.h` later, every preset (yours, the factory ones and the ones other
