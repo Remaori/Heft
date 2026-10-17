@@ -5,7 +5,7 @@
 .EXAMPLE
     .\build.ps1                  # build + pluginval (level 10) + install
     .\build.ps1 -Strictness 5    # faster validation
-    .\build.ps1 -Measure         # also measure the sound with HeftMeasure
+    .\build.ps1 -Measure         # also measure the sound (HeftMeasure) and run the unit tests (HeftTests)
     .\build.ps1 -SkipValidation  # build and install only
     .\build.ps1 -Clean           # delete build\ and build from scratch
 #>
@@ -25,6 +25,7 @@ $root         = $PSScriptRoot
 $buildDir     = Join-Path $root 'build'
 $pluginBuilt  = Join-Path $buildDir 'Heft_artefacts\Release\VST3\Heft.vst3'
 $measureExe   = Join-Path $buildDir 'HeftMeasure_artefacts\Release\HeftMeasure.exe'
+$testsExe     = Join-Path $buildDir 'HeftTests_artefacts\Release\HeftTests.exe'
 $pluginvalDir = Join-Path $root 'tools\pluginval'
 $pluginvalExe = Join-Path $pluginvalDir 'pluginval.exe'
 $pluginvalUrl = 'https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_Windows.zip'
@@ -98,6 +99,12 @@ if ($Measure) {
     if ($LASTEXITCODE -ne 0) { Fail 'Building HeftMeasure failed.' }
     & $measureExe $pluginBuilt
     if ($LASTEXITCODE -ne 0) { Fail 'Some measurements failed. The plugin was NOT installed.' }
+
+    Step 'Running the unit tests (HeftTests)'
+    & $cmake --build $buildDir --config Release --parallel --target HeftTests
+    if ($LASTEXITCODE -ne 0) { Fail 'Building HeftTests failed.' }
+    & $testsExe
+    if ($LASTEXITCODE -ne 0) { Fail 'Some unit tests failed. The plugin was NOT installed.' }
 }
 
 # --- 4. Install ----------------------------------------------------------------

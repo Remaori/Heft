@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <juce_audio_processors/juce_audio_processors.h>
 
 // Internal parameter IDs. Don't change them once the plugin is used in
@@ -13,6 +14,12 @@ namespace ParamIDs
     inline constexpr auto levelMatch = "levelMatch";
     inline constexpr auto mix        = "mix";
 }
+
+// The parameters a preset (and each A/B slot) stores, in file order. Level Match is
+// left out on purpose: it's a listening tool, so loading a preset or switching A/B
+// must not turn it on or off. A new sound parameter only needs adding here.
+inline constexpr std::array<const char*, 5> presetParamIds { ParamIDs::fatness, ParamIDs::color, ParamIDs::mix,
+                                                             ParamIDs::output, ParamIDs::clipper };
 
 inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
 {

@@ -35,11 +35,13 @@ juce_add_plugin(Heft
 
 target_compile_features(Heft PRIVATE cxx_std_20)
 
-target_sources(Heft
-    PRIVATE
-        Source/PluginProcessor.cpp
-        Source/PluginEditor.cpp
+# Shared by the plugin and the unit tests.
+set(HEFT_SOURCES
+    Source/PluginProcessor.cpp
+    Source/PluginEditor.cpp
 )
+
+target_sources(Heft PRIVATE ${HEFT_SOURCES})
 
 target_include_directories(Heft PRIVATE Source)
 
@@ -84,6 +86,34 @@ target_compile_definitions(HeftMeasure
 )
 
 target_link_libraries(HeftMeasure
+    PRIVATE
+        juce::juce_audio_processors
+        juce::juce_dsp
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+
+# --- Unit tests (optional, not built by default) ----------------------------
+#     cmake --build build --config Release --target HeftTests
+# Compiles the plugin's own sources into a console app and tests presets, A/B and
+# the saved state directly. Uses a temporary folder, never Documents.
+juce_add_console_app(HeftTests PRODUCT_NAME "HeftTests")
+set_target_properties(HeftTests PROPERTIES EXCLUDE_FROM_ALL TRUE)
+
+target_compile_features(HeftTests PRIVATE cxx_std_20)
+target_sources(HeftTests PRIVATE tests/Tests.cpp ${HEFT_SOURCES})
+target_include_directories(HeftTests PRIVATE Source)
+
+target_compile_definitions(HeftTests
+    PRIVATE
+        JucePlugin_Name="Heft"
+        JucePlugin_VersionString="${PROJECT_VERSION}"
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+)
+
+target_link_libraries(HeftTests
     PRIVATE
         juce::juce_audio_processors
         juce::juce_dsp
