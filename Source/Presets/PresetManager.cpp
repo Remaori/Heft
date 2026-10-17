@@ -403,7 +403,8 @@ juce::Result PresetManager::saveAs (const juce::String& name)
     auto savedName = name;
 
     if (spellingOnDisk (target) != name + PresetFile::extension && ! renameExactly (target, name))
-        savedName = spellingOnDisk (target).upToLastOccurrenceOf (".", false, false);
+        if (const auto spelling = spellingOnDisk (target); spelling.isNotEmpty())   // empty: the file is gone
+            savedName = spelling.upToLastOccurrenceOf (".", false, false);
 
     setCurrent ({ Source::user, savedName }, values);
     refreshList();
@@ -429,7 +430,15 @@ bool PresetManager::renameExactly (const juce::File& from, const juce::String& n
     if (from.moveFileTo (target) && spellingOnDisk (target) == target.getFileName())
         return true;
 
-    const auto original = userFolder.getChildFile (spellingOnDisk (target));
+    // The file can vanish between the two steps (another program deletes it). Then its
+    // spelling is empty, and getChildFile ("") would be the presets folder itself: never
+    // try to move that.
+    const auto spelling = spellingOnDisk (target);
+
+    if (spelling.isEmpty())
+        return false;
+
+    const auto original = userFolder.getChildFile (spelling);
     const auto between = userFolder.getChildFile ("." + newName + "."
                                                   + juce::String::toHexString (juce::Random::getSystemRandom().nextInt64())
                                                   + ".heftpreset-renaming");
