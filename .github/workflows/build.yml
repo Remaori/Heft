@@ -1,6 +1,8 @@
 # Builds Heft on every push to main and on pull requests, validates it with
 # pluginval (strictness 10), runs HeftMeasure and uploads Heft.vst3 as an artifact.
-# Pushing a version tag (e.g. v0.1.0) also publishes a GitHub Release with the zipped plugin.
+# Pushing a version tag (e.g. v0.4.2) also creates a *draft* GitHub Release with the zipped
+# plugin. Nobody sees a draft until it's published by hand on GitHub, after downloading
+# its zip and testing it (README, "Publishing a new version").
 name: Build
 
 on:
@@ -38,7 +40,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    name: Publish release
+    name: Draft release
     needs: windows
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
@@ -61,7 +63,7 @@ jobs:
           name: Heft-VST3-Windows-x64
           path: dist
 
-      - name: Create the GitHub Release
+      - name: Create a draft GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -82,4 +84,5 @@ jobs:
           Third-party licences are in THIRD_PARTY_NOTICES.txt inside the zip.
           EOF
 
-          gh release create "$GITHUB_REF_NAME" "$zip_name" --verify-tag --title "Heft $GITHUB_REF_NAME" --notes-file notes.md
+          # --draft: published by hand after testing the zip.
+          gh release create "$GITHUB_REF_NAME" "$zip_name" --draft --verify-tag --title "Heft $GITHUB_REF_NAME" --notes-file notes.md

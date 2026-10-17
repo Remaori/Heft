@@ -187,17 +187,24 @@ If REAPER is open with the plugin loaded, the script stops and tells you
 
 ### Publishing a new version
 
-1. Bump the version in `CMakeLists.txt` (`project(Heft VERSION 0.2.0 ...)`) and commit it.
+A tag never publishes anything by itself: it creates a **draft** release, which nobody
+else sees until you publish it after testing.
+
+1. Bump the version in `CMakeLists.txt` (`project(Heft VERSION 0.4.2 ...)`) and commit it.
 2. Tag the commit and push both:
 
    ```powershell
-   git tag v0.2.0
-   git push origin main v0.2.0
+   git tag v0.4.2
+   git push origin main v0.4.2
    ```
 
-GitHub Actions builds and validates the plugin and publishes a release with the
-zipped `Heft.vst3`. If the tag doesn't match the version in `CMakeLists.txt`, the
-release step fails and nothing is published.
+3. GitHub Actions builds and validates the plugin and creates a draft release with the
+   zipped `Heft.vst3`. If the tag doesn't match the version in `CMakeLists.txt`, that
+   step fails and no draft is created.
+4. On GitHub, open **Releases**, download the zip from the draft, install it and test it
+   in REAPER.
+5. If everything works, edit the draft and press **Publish release**. If not, delete the
+   draft and the tag, fix the problem and start again.
 
 ## Add the folder to REAPER (once)
 
