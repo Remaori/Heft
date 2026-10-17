@@ -388,16 +388,60 @@ juce::Result PresetManager::saveAs (const juce::String& name)
     if (const auto folder = ensureUserFolder(); folder.failed())
         return folder;
 
+    // userFileFor() finds an existing preset with this name in any case ("kick" for "Kick"),
+    // so overwriting writes into that file instead of creating a second spelling.
+    const auto target = userFileFor (name);
     const auto values = currentValues();
-    const auto result = PresetFile::write (userFolder.getChildFile (name + PresetFile::extension), values, specs,
-                                           JucePlugin_VersionString);
+    const auto result = PresetFile::write (target, values, specs, JucePlugin_VersionString);
 
     if (result.failed())
         return result;
 
-    setCurrent ({ Source::user, name }, values);
+    // Windows keeps the old spelling of an overwritten file, so rename it to exactly what
+    // was typed. If that fails the save still worked: keep the old name everywhere so the
+    // bar and the list agree, without an error.
+    auto savedName = name;
+
+    if (spellingOnDisk (target) != name + PresetFile::extension && ! renameExactly (target, name))
+        savedName = spellingOnDisk (target).upToLastOccurrenceOf (".", false, false);
+
+    setCurrent ({ Source::user, savedName }, values);
     refreshList();
     return juce::Result::ok();
+}
+
+juce::String PresetManager::spellingOnDisk (const juce::File& file) const
+{
+    for (const auto& child : userFolder.findChildFiles (juce::File::findFiles, false, "*"))
+        if (child.getFileName().equalsIgnoreCase (file.getFileName()))
+            return child.getFileName();
+
+    return {};
+}
+
+// Renames a user preset file to exactly newName, also when only the case changes ("kick"
+// to "Kick"), which Windows treats as the same file. If a direct move doesn't change the
+// spelling, it goes through an intermediate name, and back to the original if that fails.
+bool PresetManager::renameExactly (const juce::File& from, const juce::String& newName) const
+{
+    const auto target = userFolder.getChildFile (newName + PresetFile::extension);
+
+    if (from.moveFileTo (target) && spellingOnDisk (target) == target.getFileName())
+        return true;
+
+    const auto original = userFolder.getChildFile (spellingOnDisk (target));
+    const auto between = userFolder.getChildFile ("." + newName + "."
+                                                  + juce::String::toHexString (juce::Random::getSystemRandom().nextInt64())
+                                                  + ".heftpreset-renaming");
+
+    if (! original.moveFileTo (between))
+        return false;
+
+    if (between.moveFileTo (target) && spellingOnDisk (target) == target.getFileName())
+        return true;
+
+    between.moveFileTo (original);
+    return false;
 }
 
 juce::Result PresetManager::renameCurrent (const juce::String& newName)

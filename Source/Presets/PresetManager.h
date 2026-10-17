@@ -134,6 +134,8 @@ private:
     bool checkUserFolderAvailable() const;   // the real check, on disk
     juce::Array<juce::File> userPresetFiles() const;
     void removeStaleTemporaryFiles() const;
+    juce::String spellingOnDisk (const juce::File&) const;   // the file name as Windows stores it
+    bool renameExactly (const juce::File& from, const juce::String& newName) const;
     juce::File userFileFor (const juce::String& name) const;   // existing file (any case) or a new path
     void loadFactoryPresets();
 

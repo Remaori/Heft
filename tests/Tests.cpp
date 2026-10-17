@@ -732,6 +732,36 @@ void testTemporaryFiles (HeftAudioProcessor& processor, const juce::File& scratc
     endSection();
 }
 
+//==============================================================================
+void testSaveAsCase (HeftAudioProcessor& processor, const juce::File& scratch)
+{
+    section ("Save as over a name that differs only in case");
+    {
+        auto& apvts = processor.apvts;
+        const auto folder = scratch.getChildFile ("Case");
+        PresetManager manager (apvts, folder);
+
+        setParam (apvts, ParamIDs::fatness, 30.0f);
+        manager.saveAs ("kick");
+        setParam (apvts, ParamIDs::fatness, 60.0f);
+        check (manager.userPresetExists ("Kick"), "\"kick\" already exists");
+
+        check (manager.saveAs ("Kick").wasOk(), "save as \"Kick\" (after confirming the overwrite)");
+        const auto files = folder.findChildFiles (juce::File::findFiles, false, "*");
+        check (files.size() == 1 && files[0].getFileName() == "Kick.heftpreset",
+               "a single file, now spelled Kick.heftpreset: " + (files.isEmpty() ? juce::String ("none") : files[0].getFileName()));
+        check (userNames (manager) == juce::StringArray { "Kick" }, "listed once, as Kick");
+        check (manager.getCurrent().source == PresetManager::Source::user && manager.getCurrentName() == "Kick",
+               "the current preset is Kick, like the list");
+
+        PresetFile::Values onDisk {};
+        PresetFile::read (folder.getChildFile ("Kick.heftpreset"), PresetFile::makeSpecs (apvts), onDisk);
+        check (onDisk[0] == 60.0f, "with the new values");
+        resetParams (apvts);
+    }
+    endSection();
+}
+
 } // namespace
 
 int main()
@@ -747,6 +777,7 @@ int main()
         testPresetManager (processor, scratch.folder);
         testFolderAvailability (processor, scratch.folder);
         testTemporaryFiles (processor, scratch.folder);
+        testSaveAsCase (processor, scratch.folder);
     }
 
     testProjectState();
