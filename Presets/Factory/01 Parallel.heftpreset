@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<HeftPreset formatVersion="1" pluginVersion="0.4.0">
+  <Param id="fatness" value="70.0"/>
+  <Param id="color" value="55.0"/>
+  <Param id="mix" value="50.0"/>
+  <Param id="output" value="0.0"/>
+  <Param id="clipper" value="0"/>
+</HeftPreset>

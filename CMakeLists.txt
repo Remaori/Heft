@@ -70,6 +70,23 @@ target_link_libraries(Heft
         juce::juce_recommended_warning_flags
 )
 
+# --- Factory presets, compiled into the plugin ------------------------------
+# Every Presets/Factory/*.heftpreset is embedded in the binary, so the presets show
+# up even if only the .vst3 is copied. Name them "01 Name", "02 Name"... to set the
+# order (the number isn't shown). With no files, the plugin just has "Default".
+file(GLOB HEFT_FACTORY_PRESETS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/Presets/Factory/*.heftpreset")
+list(LENGTH HEFT_FACTORY_PRESETS HEFT_FACTORY_PRESET_COUNT)
+
+if(HEFT_FACTORY_PRESETS)
+    juce_add_binary_data(HeftFactoryPresets
+        HEADER_NAME HeftFactoryData.h
+        NAMESPACE   HeftFactoryData
+        SOURCES     ${HEFT_FACTORY_PRESETS})
+
+    target_link_libraries(Heft PRIVATE HeftFactoryPresets)
+    target_compile_definitions(Heft PRIVATE HEFT_HAS_FACTORY_PRESETS=1)
+endif()
+
 # --- Measurement tool (optional, not built by default) ----------------------
 #     cmake --build build --config Release --target HeftMeasure
 juce_add_console_app(HeftMeasure PRODUCT_NAME "HeftMeasure")
@@ -122,3 +139,11 @@ target_link_libraries(HeftTests
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags
 )
+
+# The tests check that every factory preset file made it into the binary.
+target_compile_definitions(HeftTests PRIVATE HEFT_FACTORY_PRESET_COUNT=${HEFT_FACTORY_PRESET_COUNT})
+
+if(HEFT_FACTORY_PRESETS)
+    target_link_libraries(HeftTests PRIVATE HeftFactoryPresets)
+    target_compile_definitions(HeftTests PRIVATE HEFT_HAS_FACTORY_PRESETS=1)
+endif()

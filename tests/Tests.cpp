@@ -635,6 +635,47 @@ void testABComparator (const juce::File& scratch)
     endSection();
 }
 
+//==============================================================================
+void testFactoryPresets (const juce::File& scratch)
+{
+    using Source = PresetManager::Source;
+    HeftAudioProcessor processor;
+    auto& apvts = processor.apvts;
+    PresetManager manager (apvts, scratch.getChildFile ("Factory test"));
+    manager.removeFile = [] (const juce::File& f) { return f.deleteFile(); };
+    manager.refreshList();
+
+    section ("Factory presets: built into the plugin");
+    {
+        check (manager.getNumFactoryEntries() == 1 + HEFT_FACTORY_PRESET_COUNT,
+               "every file in Presets/Factory parses and is listed (" + juce::String (HEFT_FACTORY_PRESET_COUNT) + " files)");
+        check (manager.getEntries()[0].ref.source == Source::defaultPreset && manager.getEntries()[0].ref.name == "Default",
+               "Default comes first");
+
+       #if HEFT_HAS_FACTORY_PRESETS
+        const auto* parallel = findEntry (manager, Source::factory, "Parallel");
+        check (parallel != nullptr, "\"01 Parallel\" is listed as \"Parallel\" (the number orders, it isn't shown)");
+
+        if (parallel != nullptr)
+        {
+            const auto entry = *parallel;
+            check (manager.load (entry).wasOk() && getParam (apvts, ParamIDs::fatness) == 70.0f && getParam (apvts, ParamIDs::mix) == 50.0f,
+                   "loads its values");
+            check (manager.getCurrentName() == "Parallel" && ! manager.isModified(), "becomes the current preset, no asterisk");
+            check (! manager.canSaveInPlace() && manager.save().failed(), "Save doesn't overwrite it (the bar turns it into Save as)");
+            check (manager.renameCurrent ("X").failed() && manager.deleteCurrent().failed(), "it can't be renamed or deleted");
+
+            check (manager.saveAs ("Parallel").wasOk(), "a user preset can have the same name");
+            check (findEntry (manager, Source::user, "Parallel") != nullptr && findEntry (manager, Source::factory, "Parallel") != nullptr,
+                   "both are listed");
+            check (manager.getCurrent().source == Source::user && ! manager.getCurrent().refersTo (entry.ref),
+                   "and they're told apart by where they come from");
+        }
+       #endif
+    }
+    endSection();
+}
+
 } // namespace
 
 int main()
@@ -652,6 +693,7 @@ int main()
 
     testProjectState();
     testABComparator (scratch.folder);
+    testFactoryPresets (scratch.folder);
 
     std::printf ("\n%s\n", failures == 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED");
     return failures == 0 ? 0 : 1;
