@@ -6,7 +6,9 @@
 #include "UI/Meters.h"
 #include "UI/PresetBar.h"
 
-class HeftAudioProcessorEditor final : public juce::AudioProcessorEditor, private juce::Timer
+class HeftAudioProcessorEditor final : public juce::AudioProcessorEditor,
+                                       public juce::FileDragAndDropTarget,
+                                       private juce::Timer
 {
 public:
     explicit HeftAudioProcessorEditor (HeftAudioProcessor&);
@@ -14,6 +16,11 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+
+    // Dropping .heftpreset files on the window imports them. Some DAWs keep drops to
+    // themselves, so this is a shortcut; the menu's Import is the main way.
+    bool isInterestedInFileDrag (const juce::StringArray& files) override;
+    void filesDropped (const juce::StringArray& files, int x, int y) override;
 
 private:
     using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;

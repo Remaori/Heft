@@ -85,6 +85,26 @@ HeftAudioProcessorEditor::~HeftAudioProcessorEditor()
     setLookAndFeel (nullptr);
 }
 
+bool HeftAudioProcessorEditor::isInterestedInFileDrag (const juce::StringArray& files)
+{
+    for (const auto& path : files)
+        if (path.endsWithIgnoreCase (PresetFile::extension))
+            return true;
+
+    return false;
+}
+
+void HeftAudioProcessorEditor::filesDropped (const juce::StringArray& files, int, int)
+{
+    juce::Array<juce::File> presets;
+
+    for (const auto& path : files)
+        if (path.endsWithIgnoreCase (PresetFile::extension))
+            presets.add (juce::File (path));
+
+    presetBar.importFiles (presets);
+}
+
 void HeftAudioProcessorEditor::setupKnob (juce::Slider& knob, juce::Label& label, const juce::String& name,
                                           const juce::String& paramId, const juce::String& tooltip)
 {
