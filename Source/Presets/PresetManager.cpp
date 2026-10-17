@@ -79,6 +79,7 @@ PresetManager::PresetManager (juce::AudioProcessorValueTreeState& state, juce::F
       userFolder (std::move (folder))
 {
     loadFactoryPresets();
+    userFolderAvailable = checkUserFolderAvailable();
 
     // A new instance starts on "Default", with both A/B slots the same.
     const auto defaults = PresetFile::defaults (specs);
@@ -95,7 +96,7 @@ juce::File PresetManager::defaultUserFolder()
     return documents == juce::File() ? juce::File() : documents.getChildFile ("Heft").getChildFile ("Presets");
 }
 
-bool PresetManager::isUserFolderAvailable() const
+bool PresetManager::checkUserFolderAvailable() const
 {
     // The folder itself is created on demand; what must exist is Documents (its grandparent).
     return userFolder != juce::File()
@@ -135,6 +136,7 @@ void PresetManager::loadFactoryPresets()
 //==============================================================================
 void PresetManager::refreshList()
 {
+    userFolderAvailable = checkUserFolderAvailable();
     entries.clear();
     entries.push_back ({ { Source::defaultPreset, defaultName }, {} });
 
@@ -291,7 +293,9 @@ juce::Result PresetManager::step (int delta)
 //==============================================================================
 juce::Result PresetManager::ensureUserFolder()
 {
-    if (! isUserFolderAvailable())
+    userFolderAvailable = checkUserFolderAvailable();
+
+    if (! userFolderAvailable)
         return juce::Result::fail ("Your Documents folder can't be found, so user presets are unavailable.");
 
     if (userFolder.isDirectory())

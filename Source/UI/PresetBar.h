@@ -59,7 +59,8 @@ public:
     }
 
     // Called from the editor's timer too: the asterisk follows the knobs (and automation)
-    // without parameter listeners.
+    // without parameter listeners. Runs 30 times a second, so nothing here touches the
+    // disk: folder availability is the manager's cached value.
     void refresh()
     {
         const auto name = manager.getCurrentName();
@@ -154,6 +155,8 @@ private:
 
     void showMoreMenu()
     {
+        manager.refreshList();   // fresh folder availability for Save as, Import and Open folder
+
         const auto isUser = manager.canSaveInPlace();
         const auto folderOk = manager.isUserFolderAvailable();
         const juce::String ellipsis (juce::CharPointer_UTF8 ("\xe2\x80\xa6"));

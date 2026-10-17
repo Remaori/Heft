@@ -676,6 +676,24 @@ void testFactoryPresets (const juce::File& scratch)
     endSection();
 }
 
+//==============================================================================
+void testFolderAvailability (HeftAudioProcessor& processor, const juce::File& scratch)
+{
+    section ("Folder availability is cached (the UI timer never touches the disk)");
+    {
+        const auto documents = scratch.getChildFile ("Documents that don't exist yet");
+        PresetManager manager (processor.apvts, documents.getChildFile ("Heft").getChildFile ("Presets"));
+        check (! manager.isUserFolderAvailable(), "false when Documents (the grandparent) doesn't exist");
+
+        documents.createDirectory();
+        check (! manager.isUserFolderAvailable(), "still false right after Documents appears: no disk check");
+
+        manager.refreshList();
+        check (manager.isUserFolderAvailable(), "true after refreshList()");
+    }
+    endSection();
+}
+
 } // namespace
 
 int main()
@@ -689,6 +707,7 @@ int main()
         HeftAudioProcessor processor;
         testPresetFile (processor, scratch.folder);
         testPresetManager (processor, scratch.folder);
+        testFolderAvailability (processor, scratch.folder);
     }
 
     testProjectState();

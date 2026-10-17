@@ -46,7 +46,11 @@ public:
 
     static juce::File defaultUserFolder();   // Documents\Heft\Presets
     const juce::File& getUserFolder() const { return userFolder; }
-    bool isUserFolderAvailable() const;      // false if Documents can't be found
+
+    // False if Documents can't be found. Cached, without touching the disk: the UI asks
+    // 30 times a second and Documents may be on a network drive or OneDrive. Updated in
+    // the constructor, refreshList() and whenever the folder is about to be used.
+    bool isUserFolderAvailable() const { return userFolderAvailable.load(); }
 
     //==============================================================================
     // The list: Default, factory presets, then user presets. refreshList() re-reads
@@ -127,6 +131,7 @@ private:
     void changed();
     juce::Result step (int delta);
     juce::Result ensureUserFolder();
+    bool checkUserFolderAvailable() const;   // the real check, on disk
     juce::File userFileFor (const juce::String& name) const;   // existing file (any case) or a new path
     void loadFactoryPresets();
 
@@ -142,6 +147,7 @@ private:
     int activeSlot = 0;
 
     std::atomic<juce::uint32> changeCount { 0 };
+    std::atomic<bool> userFolderAvailable { false };
     std::unique_ptr<juce::FileChooser> chooser;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PresetManager)
