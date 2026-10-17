@@ -430,6 +430,7 @@ void HeftAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     auto state = apvts.copyState();
     state.setProperty (editorWidthId, editorWidth.load(), nullptr);
+    presetManager.writeState (state);   // stateVersion, current preset and both A/B slots
 
     if (auto xml = state.createXml())
         copyXmlToBinary (*xml, destData);
@@ -443,7 +444,14 @@ void HeftAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
         {
             auto state = juce::ValueTree::fromXml (*xml);
             editorWidth = (int) state.getProperty (editorWidthId, 0);
+
+            // Presets and A/B travel in their own child. The parameters are restored first,
+            // exactly as in 0.3.x; a state without that child (from 0.3.x) is migrated.
+            // Memory only: some hosts call this from a thread other than the message thread.
+            const auto abState = state.getChildWithName (PresetManager::abStateType);
+            state.removeChild (abState, nullptr);
             apvts.replaceState (state);
+            presetManager.readState (abState);
         }
     }
 }

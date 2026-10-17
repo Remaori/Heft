@@ -39,6 +39,7 @@ target_compile_features(Heft PRIVATE cxx_std_20)
 set(HEFT_SOURCES
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
+    Source/Presets/PresetManager.cpp
 )
 
 target_sources(Heft PRIVATE ${HEFT_SOURCES})

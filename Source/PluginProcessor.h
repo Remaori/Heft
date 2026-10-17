@@ -13,6 +13,7 @@
 #include "DSP/Saturator.h"
 #include "DSP/SoftClipper.h"
 #include "DSP/TiltFilter.h"
+#include "Presets/PresetManager.h"
 
 class HeftAudioProcessor final : public juce::AudioProcessor
 {
@@ -49,6 +50,9 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
     juce::AudioProcessorValueTreeState apvts;
+
+    // Presets and A/B. Declared after apvts, which it uses. Never touched by the audio thread.
+    PresetManager presetManager { apvts };
 
     // Saturator settings for a given Fatness and Color (both 0..1). Shared with the
     // editor's curve display so it always draws exactly what the audio path uses.
