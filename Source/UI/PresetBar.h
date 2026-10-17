@@ -20,12 +20,16 @@ public:
         nextButton.getProperties().set ("glyph", "next");
         moreButton.getProperties().set ("glyph", "more");
         nameButton.getProperties().set ("presetName", juce::String());
+        slotAButton.getProperties().set ("segment", "left");
+        slotBButton.getProperties().set ("segment", "right");
 
         previousButton.setTooltip ("Previous preset");
         nextButton.setTooltip ("Next preset");
         nameButton.setTooltip ("Choose a preset");
         saveButton.setTooltip ("Save changes to this preset, or save it as a new one");
         moreButton.setTooltip ("More preset options");
+        slotAButton.setTooltip ("Compare: setting A");
+        slotBButton.setTooltip ("Compare: setting B");
 
         previousButton.onClick = [this] { report ("Can't load the preset", manager.loadPrevious()); };
         nextButton.onClick     = [this] { report ("Can't load the preset", manager.loadNext()); };
@@ -33,7 +37,13 @@ public:
         saveButton.onClick     = [this] { save(); };
         moreButton.onClick     = [this] { showMoreMenu(); };
 
-        for (auto* button : { &previousButton, &nameButton, &nextButton, &saveButton, &moreButton })
+        // A/B: clicking the letter that's already active does nothing (the manager ignores it).
+        slotAButton.onClick = [this] { manager.switchTo (PresetManager::Slot::a); };
+        slotBButton.onClick = [this] { manager.switchTo (PresetManager::Slot::b); };
+        copyButton.onClick  = [this] { manager.copyActiveToOther(); };
+
+        for (auto* button : { &previousButton, &nameButton, &nextButton, &saveButton, &moreButton,
+                              &slotAButton, &slotBButton, &copyButton })
             addAndMakeVisible (button);
 
         manager.addChangeListener (this);
@@ -64,6 +74,15 @@ public:
         }
 
         saveButton.setEnabled (manager.canSaveInPlace() || manager.isUserFolderAvailable());
+
+        const auto onA = manager.getActiveSlot() == PresetManager::Slot::a;
+
+        if (slotAButton.getToggleState() != onA || slotBButton.getToggleState() == onA)
+        {
+            slotAButton.setToggleState (onA, juce::dontSendNotification);
+            slotBButton.setToggleState (! onA, juce::dontSendNotification);
+            copyButton.setTooltip (onA ? "Copy A to B" : "Copy B to A");
+        }
     }
 
     void resized() override
@@ -79,6 +98,10 @@ public:
         take (8.0f);
         saveButton.setBounds (take (52.0f).withTrimmedRight (gap));
         moreButton.setBounds (take (28.0f).withTrimmedLeft (gap));
+        take (20.0f);
+        slotAButton.setBounds (take (28.0f));   // the two halves touch: one A | B pill
+        slotBButton.setBounds (take (28.0f));
+        copyButton.setBounds (take (48.0f).withTrimmedLeft (gap * 2));
     }
 
 private:
@@ -329,6 +352,7 @@ private:
 
     PresetManager& manager;
     juce::TextButton previousButton, nameButton, nextButton, saveButton { "Save" }, moreButton;
+    juce::TextButton slotAButton { "A" }, slotBButton { "B" }, copyButton { "Copy" };
 
     std::unique_ptr<juce::AlertWindow> dialog;
 

@@ -531,6 +531,110 @@ void testProjectState()
     endSection();
 }
 
+//==============================================================================
+void testABComparator (const juce::File& scratch)
+{
+    using Slot = PresetManager::Slot;
+    HeftAudioProcessor processor;
+    auto& apvts = processor.apvts;
+    PresetManager manager (apvts, scratch.getChildFile ("AB presets"));
+    manager.removeFile = [] (const juce::File& f) { return f.deleteFile(); };
+
+    section ("A/B: each slot keeps its settings, preset and asterisk");
+    {
+        check (manager.getActiveSlot() == Slot::a, "A is active at first");
+
+        setParam (apvts, ParamIDs::fatness, 70.0f);
+        check (manager.getCurrentName() == "Default" && manager.isModified(), "A: Default *");
+
+        const auto before = manager.getChangeCount();
+        manager.switchTo (Slot::a);
+        check (manager.getChangeCount() == before && getParam (apvts, ParamIDs::fatness) == 70.0f,
+               "clicking the active letter does nothing");
+
+        manager.switchTo (Slot::b);
+        check (manager.getActiveSlot() == Slot::b && getParam (apvts, ParamIDs::fatness) == 25.0f, "B has its own values");
+        check (manager.getCurrentName() == "Default" && ! manager.isModified(), "B: Default, no asterisk");
+
+        setParam (apvts, ParamIDs::fatness, 40.0f);
+        manager.saveAs ("Bass");
+        setParam (apvts, ParamIDs::color, 90.0f);
+        check (manager.getCurrentName() == "Bass" && manager.isModified(), "B: Bass *");
+
+        manager.switchTo (Slot::a);
+        check (getParam (apvts, ParamIDs::fatness) == 70.0f && getParam (apvts, ParamIDs::color) == 50.0f,
+               "back to A restores its knobs");
+        check (manager.getCurrentName() == "Default" && manager.isModified(), "and its preset and asterisk");
+
+        manager.switchTo (Slot::b);
+        check (getParam (apvts, ParamIDs::color) == 90.0f && manager.getCurrentName() == "Bass" && manager.isModified(),
+               "and B remembered its unsaved change");
+    }
+    endSection();
+
+    section ("A/B: Level Match stays as it is");
+    {
+        setParam (apvts, ParamIDs::levelMatch, 1.0f);
+        manager.switchTo (Slot::a);
+        check (getParam (apvts, ParamIDs::levelMatch) == 1.0f, "on in B, still on after switching to A");
+        setParam (apvts, ParamIDs::levelMatch, 0.0f);
+        manager.switchTo (Slot::b);
+        check (getParam (apvts, ParamIDs::levelMatch) == 0.0f, "off stays off");
+    }
+    endSection();
+
+    section ("A/B: Copy and presets only touch the active slot");
+    {
+        // B is active: "Bass *" with color 90.
+        manager.copyActiveToOther();
+        manager.switchTo (Slot::a);
+        check (getParam (apvts, ParamIDs::fatness) == 40.0f && getParam (apvts, ParamIDs::color) == 90.0f,
+               "Copy B to A copied the values");
+        check (manager.getCurrentName() == "Bass" && manager.isModified(), "and the preset with its asterisk");
+
+        manager.load (manager.getEntries()[0]);   // Default, into A
+        manager.switchTo (Slot::b);
+        check (manager.getCurrentName() == "Bass" && getParam (apvts, ParamIDs::color) == 90.0f, "loading in A left B alone");
+
+        manager.save();   // saves Bass from B
+        manager.switchTo (Slot::a);
+        check (manager.getCurrentName() == "Default" && ! manager.isModified(), "saving in B left A alone");
+    }
+    endSection();
+
+    section ("A/B: saved with the project");
+    {
+        // A: Default (clean). Make B different and active, then save the project.
+        manager.switchTo (Slot::b);
+        setParam (apvts, ParamIDs::mix, 35.0f);
+
+        juce::ValueTree saved ("Parameters");
+        manager.writeState (saved);
+        const auto ab = saved.getChildWithName (PresetManager::abStateType);
+        check (ab["active"].toString() == "B" && (float) ab.getChildWithName ("SlotB")["mix"] == 35.0f,
+               "the active slot is written with the current knobs");
+
+        // Reopen: the parameters come back first (as the host does), then the A/B data.
+        // The processor's parameters (B's knobs right now) plus this manager's A/B data.
+        auto tree = stateTree (processor);
+        tree.removeChild (tree.getChildWithName (PresetManager::abStateType), nullptr);
+        tree.appendChild (ab.createCopy(), nullptr);
+        juce::MemoryBlock withAB;
+        juce::AudioProcessor::copyXmlToBinary (*tree.createXml(), withAB);
+
+        HeftAudioProcessor reopened;
+        reopened.setStateInformation (withAB.getData(), (int) withAB.getSize());
+        auto& m = reopened.presetManager;
+        check (m.getActiveSlot() == Slot::b && m.getCurrentName() == "Bass" && m.isModified(), "B active, Bass *");
+        check (getParam (reopened.apvts, ParamIDs::mix) == 35.0f, "B's knobs");
+
+        m.switchTo (Slot::a);
+        check (m.getCurrentName() == "Default" && ! m.isModified() && getParam (reopened.apvts, ParamIDs::mix) == 100.0f,
+               "and A comes back as it was");
+    }
+    endSection();
+}
+
 } // namespace
 
 int main()
@@ -547,6 +651,7 @@ int main()
     }
 
     testProjectState();
+    testABComparator (scratch.folder);
 
     std::printf ("\n%s\n", failures == 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED");
     return failures == 0 ? 0 : 1;
