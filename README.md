@@ -188,7 +188,8 @@ If REAPER is open with the plugin loaded, the script stops and tells you
 ### Publishing a new version
 
 A tag never publishes anything by itself: it creates a **draft** release, which nobody
-else sees until you publish it after testing.
+else sees until you publish it after testing. The full checklist, including what to
+test by hand, is in [docs/RELEASING.md](docs/RELEASING.md).
 
 1. Bump the version in `CMakeLists.txt` (`project(Heft VERSION 0.4.2 ...)`), move the notes
    under **Unreleased** in [`CHANGELOG.md`](CHANGELOG.md) to a new `## 0.4.2` section, and
@@ -267,6 +268,7 @@ tests/Tests.cpp           HeftTests: unit tests for presets, A/B and project sta
 .github/workflows/        GitHub Actions: build + pluginval + HeftMeasure + HeftTests; releases on v* tags
 docs/screenshot.png       UI screenshot used in this README
 CHANGELOG.md              What changed in each version (also the text of each release)
+docs/RELEASING.md         Checklist for publishing a version
 LICENSE                   GNU AGPL v3
 THIRD_PARTY_NOTICES.txt   Licenses of the third-party code inside the plugin binary
 ```

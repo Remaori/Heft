@@ -2,7 +2,7 @@
 # pluginval (strictness 10), runs HeftMeasure and uploads Heft.vst3 as an artifact.
 # Pushing a version tag (e.g. v0.4.2) also creates a *draft* GitHub Release with the zipped
 # plugin. Nobody sees a draft until it's published by hand on GitHub, after downloading
-# its zip and testing it (README, "Publishing a new version").
+# its zip and testing it (docs/RELEASING.md).
 name: Build
 
 on:
