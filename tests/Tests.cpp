@@ -762,6 +762,49 @@ void testSaveAsCase (HeftAudioProcessor& processor, const juce::File& scratch)
     endSection();
 }
 
+//==============================================================================
+void testInterruptedRenames (HeftAudioProcessor& processor, const juce::File& scratch)
+{
+    section ("Leftovers of an interrupted rename are recovered, never deleted");
+    {
+        const auto folder = scratch.getChildFile ("Renames");
+        PresetManager manager (processor.apvts, folder);
+        const auto specs = PresetFile::makeSpecs (processor.apvts);
+        manager.saveAs ("Kick");
+
+        // A rename cut short leaves the preset itself under an intermediate name.
+        const auto now = juce::Time::getCurrentTime();
+        const auto oldSnare = folder.getChildFile (".Snare.0123456789abcdef.heftpreset-renaming");
+        const auto oldKick  = folder.getChildFile (".Kick.fedcba9876543210.heftpreset-renaming");
+        const auto recent   = folder.getChildFile (".Bass.00112233aabbccdd.heftpreset-renaming");
+        const auto notes    = folder.getChildFile ("notes.txt");
+        const auto backup   = folder.getChildFile ("Kick.heftpreset-renaming.bak");
+
+        PresetFile::write (folder.getChildFile ("source.heftpreset"), { 77.0f, 33.0f, 66.0f, -4.0f, 1.0f }, specs, "0.4.1");
+        folder.getChildFile ("source.heftpreset").moveFileTo (oldSnare);
+
+        for (const auto& file : { oldKick, recent, notes, backup })
+            file.replaceWithText ("<HeftPreset formatVersion=\"1\"/>");
+
+        for (const auto& file : { oldSnare, oldKick, notes, backup })
+            file.setLastModificationTime (now - juce::RelativeTime::minutes (11));
+
+        manager.refreshList();
+        check (! oldSnare.exists() && userNames (manager).contains ("Snare"), "an old leftover gets its name back and is listed");
+
+        PresetFile::Values values {};
+        check (PresetFile::read (folder.getChildFile ("Snare.heftpreset"), specs, values).wasOk() && values[0] == 77.0f
+                   && values[4] == 1.0f,
+               "with its content intact");
+        check (! oldKick.exists() && userNames (manager).contains ("Kick (recovered)") && userNames (manager).contains ("Kick"),
+               "if the name is taken it becomes \"Kick (recovered)\"");
+        check (recent.exists() && ! userNames (manager).contains ("Bass"), "a recent one is left alone (a rename may be in progress)");
+        check (notes.exists() && backup.exists(), "nothing else is touched");
+        check (folder.findChildFiles (juce::File::findFiles, false, "*").size() == 6, "and nothing was deleted");
+    }
+    endSection();
+}
+
 } // namespace
 
 int main()
@@ -778,6 +821,7 @@ int main()
         testFolderAvailability (processor, scratch.folder);
         testTemporaryFiles (processor, scratch.folder);
         testSaveAsCase (processor, scratch.folder);
+        testInterruptedRenames (processor, scratch.folder);
     }
 
     testProjectState();

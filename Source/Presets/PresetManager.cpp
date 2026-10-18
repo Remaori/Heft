@@ -144,6 +144,7 @@ void PresetManager::refreshList()
         entries.push_back ({ { Source::factory, preset.name }, {} });
 
     removeStaleTemporaryFiles();
+    recoverInterruptedRenames();
 
     {
         // Natural order: "Kick 2" before "Kick 10".
@@ -348,6 +349,38 @@ void PresetManager::removeStaleTemporaryFiles() const
             file.deleteFile();
 }
 
+// A rename cut short between its two steps can leave a preset as
+// ".Name.<random>.heftpreset-renaming". Unlike a .heftpreset-tmp file, that is the preset
+// itself (possibly the only copy), so it's never deleted: after 10 minutes (another Heft
+// instance may still be renaming it) it gets a normal name back, "Name", or
+// "Name (recovered)", "Name (recovered 2)"... if that's taken, and shows up in the list.
+void PresetManager::recoverInterruptedRenames() const
+{
+    if (! userFolder.isDirectory())
+        return;
+
+    const auto cutoff = juce::Time::getCurrentTime() - juce::RelativeTime::minutes (10);
+
+    for (const auto& file : userFolder.findChildFiles (juce::File::findFiles, false, "*"))
+    {
+        if (! file.getFileExtension().equalsIgnoreCase (PresetFile::renamingExtension) || file.getLastModificationTime() >= cutoff)
+            continue;
+
+        // ".Kick.1a2b3c4d.heftpreset-renaming" -> "Kick"
+        auto name = file.getFileNameWithoutExtension().substring (1).upToLastOccurrenceOf (".", false, false);
+
+        if (PresetFile::validateName (name).isNotEmpty())
+            name = "Recovered preset";
+
+        auto candidate = name;
+
+        for (int n = 1; userPresetExists (candidate); ++n)
+            candidate = name + (n == 1 ? juce::String (" (recovered)") : " (recovered " + juce::String (n) + ")");
+
+        file.moveFileTo (userFolder.getChildFile (candidate + PresetFile::extension));
+    }
+}
+
 bool PresetManager::userPresetExists (const juce::String& name) const
 {
     return userFileFor (name).existsAsFile();
@@ -441,7 +474,7 @@ bool PresetManager::renameExactly (const juce::File& from, const juce::String& n
     const auto original = userFolder.getChildFile (spelling);
     const auto between = userFolder.getChildFile ("." + newName + "."
                                                   + juce::String::toHexString (juce::Random::getSystemRandom().nextInt64())
-                                                  + ".heftpreset-renaming");
+                                                  + PresetFile::renamingExtension);
 
     if (! original.moveFileTo (between))
         return false;
