@@ -180,6 +180,7 @@ powershell -ExecutionPolicy Bypass -File build.ps1 -Strictness 5   # faster vali
 powershell -ExecutionPolicy Bypass -File build.ps1 -Measure        # also measure the sound and run the unit tests
 powershell -ExecutionPolicy Bypass -File build.ps1 -SkipValidation # build and install only
 powershell -ExecutionPolicy Bypass -File build.ps1 -Clean          # from scratch (re-downloads JUCE)
+powershell -ExecutionPolicy Bypass -File build.ps1 -Host           # only build JUCE's AudioPluginHost (second host)
 ```
 
 If REAPER is open with the plugin loaded, the script stops and tells you
@@ -235,6 +236,32 @@ After rebuilding, just close and reopen REAPER. If you changed parameters
   and tick **Open with FX offline (recovery mode)**.
 - Don't change the parameter IDs, ranges or meaning in `Source/Parameters.h`
   once you use the plugin in projects: REAPER stores values with them.
+
+## Testing in a second host
+
+Besides REAPER, Heft can be tried in JUCE's **AudioPluginHost**, a small free host that
+comes with the JUCE source code this project already downloads. It's useful to check
+that presets, A/B and the saved state also work outside REAPER.
+
+1. Build it (the first time takes a few minutes; later runs are quick):
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File build.ps1 -Host
+   ```
+
+   At the end it prints where `AudioPluginHost.exe` is (inside `build\juce-host`).
+2. Open it. In **Options → Change the Audio Device Settings**, choose your audio interface.
+3. Let it find Heft: **Options → Edit the List of Available Plug-ins…**, then the
+   **Options…** button → **Scan for new or updated VST3 plug-ins**. Add your VST3 folder
+   (`C:\Users\<you>\VST3`) to the list of folders and press **Scan**. This is only needed
+   once, and again after installing a new version.
+4. Right-click an empty part of the graph and choose **Heft**. Drag from **Audio Input**
+   to Heft's inputs and from Heft's outputs to **Audio Output**. Double-click Heft to
+   open its window.
+5. Check that the state comes back: load a preset, move a knob so the asterisk shows, and
+   make A and B different. **File → Save** writes a `.filtergraph` file. Then
+   **File → New**, **File → Open…** that file and double-click Heft again: the preset, the
+   asterisk and both A/B slots should be exactly as you left them.
 
 ## Where everything is
 
