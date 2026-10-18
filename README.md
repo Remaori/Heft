@@ -180,6 +180,7 @@ powershell -ExecutionPolicy Bypass -File build.ps1 -Strictness 5   # faster vali
 powershell -ExecutionPolicy Bypass -File build.ps1 -Measure        # also measure the sound and run the unit tests
 powershell -ExecutionPolicy Bypass -File build.ps1 -SkipValidation # build and install only
 powershell -ExecutionPolicy Bypass -File build.ps1 -Clean          # from scratch (re-downloads JUCE)
+powershell -ExecutionPolicy Bypass -File build.ps1 -Host           # only build JUCE's AudioPluginHost (second host)
 ```
 
 If REAPER is open with the plugin loaded, the script stops and tells you
@@ -187,17 +188,27 @@ If REAPER is open with the plugin loaded, the script stops and tells you
 
 ### Publishing a new version
 
-1. Bump the version in `CMakeLists.txt` (`project(Heft VERSION 0.2.0 ...)`) and commit it.
+A tag never publishes anything by itself: it creates a **draft** release, which nobody
+else sees until you publish it after testing. The full checklist, including what to
+test by hand, is in [docs/RELEASING.md](docs/RELEASING.md).
+
+1. Bump the version in `CMakeLists.txt` (`project(Heft VERSION 0.4.2 ...)`), move the notes
+   under **Unreleased** in [`CHANGELOG.md`](CHANGELOG.md) to a new `## 0.4.2` section, and
+   commit both. That section becomes the text of the release; without it, no draft is created.
 2. Tag the commit and push both:
 
    ```powershell
-   git tag v0.2.0
-   git push origin main v0.2.0
+   git tag v0.4.2
+   git push origin main v0.4.2
    ```
 
-GitHub Actions builds and validates the plugin and publishes a release with the
-zipped `Heft.vst3`. If the tag doesn't match the version in `CMakeLists.txt`, the
-release step fails and nothing is published.
+3. GitHub Actions builds and validates the plugin and creates a draft release with the
+   zipped `Heft.vst3`. If the tag doesn't match the version in `CMakeLists.txt`, that
+   step fails and no draft is created.
+4. On GitHub, open **Releases**, download the zip from the draft, install it and test it
+   in REAPER.
+5. If everything works, edit the draft and press **Publish release**. If not, delete the
+   draft and the tag, fix the problem and start again.
 
 ## Add the folder to REAPER (once)
 
@@ -225,6 +236,32 @@ After rebuilding, just close and reopen REAPER. If you changed parameters
   and tick **Open with FX offline (recovery mode)**.
 - Don't change the parameter IDs, ranges or meaning in `Source/Parameters.h`
   once you use the plugin in projects: REAPER stores values with them.
+
+## Testing in a second host
+
+Besides REAPER, Heft can be tried in JUCE's **AudioPluginHost**, a small free host that
+comes with the JUCE source code this project already downloads. It's useful to check
+that presets, A/B and the saved state also work outside REAPER.
+
+1. Build it (the first time takes a few minutes; later runs are quick):
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File build.ps1 -Host
+   ```
+
+   At the end it prints where `AudioPluginHost.exe` is (inside `build\juce-host`).
+2. Open it. In **Options → Change the Audio Device Settings**, choose your audio interface.
+3. Let it find Heft: **Options → Edit the List of Available Plug-ins…**, then the
+   **Options…** button → **Scan for new or updated VST3 plug-ins**. Add your VST3 folder
+   (`C:\Users\<you>\VST3`) to the list of folders and press **Scan**. This is only needed
+   once, and again after installing a new version.
+4. Right-click an empty part of the graph and choose **Heft**. Drag from **Audio Input**
+   to Heft's inputs and from Heft's outputs to **Audio Output**. Double-click Heft to
+   open its window.
+5. Check that the state comes back: load a preset, move a knob so the asterisk shows, and
+   make A and B different. **File → Save** writes a `.filtergraph` file. Then
+   **File → New**, **File → Open…** that file and double-click Heft again: the preset, the
+   asterisk and both A/B slots should be exactly as you left them.
 
 ## Where everything is
 
@@ -257,6 +294,8 @@ tests/Measure.cpp         HeftMeasure: loads the VST3 and measures it (build.ps1
 tests/Tests.cpp           HeftTests: unit tests for presets, A/B and project state (build.ps1 -Measure)
 .github/workflows/        GitHub Actions: build + pluginval + HeftMeasure + HeftTests; releases on v* tags
 docs/screenshot.png       UI screenshot used in this README
+CHANGELOG.md              What changed in each version (also the text of each release)
+docs/RELEASING.md         Checklist for publishing a version
 LICENSE                   GNU AGPL v3
 THIRD_PARTY_NOTICES.txt   Licenses of the third-party code inside the plugin binary
 ```

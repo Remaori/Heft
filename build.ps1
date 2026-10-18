@@ -8,6 +8,7 @@
     .\build.ps1 -Measure         # also measure the sound (HeftMeasure) and run the unit tests (HeftTests)
     .\build.ps1 -SkipValidation  # build and install only
     .\build.ps1 -Clean           # delete build\ and build from scratch
+    .\build.ps1 -Host            # only build JUCE's AudioPluginHost, a second host for testing
 #>
 [CmdletBinding()]
 param(
@@ -16,6 +17,9 @@ param(
     [switch] $SkipValidation,
     [switch] $Measure,
     [switch] $Clean,
+    # -Host. PowerShell already uses the name $Host, so the switch is an alias.
+    [Alias('Host')]
+    [switch] $BuildHost,
     [string] $InstallDir = (Join-Path $env:USERPROFILE 'VST3')
 )
 
@@ -63,6 +67,38 @@ function Get-Pluginval {
 
 $timer = [Diagnostics.Stopwatch]::StartNew()
 $cmake = Find-CMake
+
+# --- Optional: JUCE's AudioPluginHost, to test Heft in a second host -------------
+# Uses the JUCE source the normal build already downloaded (no second download) and
+# its own folder, build\juce-host. Later runs only rebuild what changed.
+if ($BuildHost) {
+    $juceSource = Join-Path $buildDir '_deps\juce-src'
+    $hostDir    = Join-Path $buildDir 'juce-host'
+    $hostExe    = Join-Path $hostDir 'extras\AudioPluginHost\AudioPluginHost_artefacts\Release\AudioPluginHost.exe'
+
+    if (-not (Test-Path (Join-Path $juceSource 'CMakeLists.txt'))) {
+        Step 'Configuring the project first (downloads JUCE, takes a few minutes)'
+        & $cmake -S $root -B $buildDir -A x64
+        if ($LASTEXITCODE -ne 0) { Fail 'CMake configuration failed.' }
+    }
+
+    if (-not (Test-Path (Join-Path $hostDir 'CMakeCache.txt'))) {
+        Step 'Configuring the JUCE extras'
+        & $cmake -S $juceSource -B $hostDir -A x64 -DJUCE_BUILD_EXTRAS=ON -DJUCE_BUILD_EXAMPLES=OFF -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+        if ($LASTEXITCODE -ne 0) { Fail 'Configuring the AudioPluginHost failed.' }
+    }
+
+    Step 'Building the AudioPluginHost (the first time takes a few minutes)'
+    & $cmake --build $hostDir --config Release --parallel --target AudioPluginHost
+    if ($LASTEXITCODE -ne 0) { Fail 'Building the AudioPluginHost failed.' }
+    if (-not (Test-Path $hostExe)) { Fail "AudioPluginHost.exe not found at $hostExe" }
+
+    Write-Host ''
+    Write-Host "AudioPluginHost ready in $([int]$timer.Elapsed.TotalSeconds) s:" -ForegroundColor Green
+    Write-Host "  $hostExe"
+    Write-Host 'To load Heft in it, see "Testing in a second host" in the README.'
+    exit 0
+}
 
 # --- 1. Configure --------------------------------------------------------------
 if ($Clean -and (Test-Path $buildDir)) {

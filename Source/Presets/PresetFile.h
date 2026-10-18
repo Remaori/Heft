@@ -29,6 +29,7 @@ namespace PresetFile
     inline constexpr int maxNameLength = 64;
     inline const juce::String extension { ".heftpreset" };
     inline const juce::String tempExtension { ".heftpreset-tmp" };   // a save in progress
+    inline const juce::String renamingExtension { ".heftpreset-renaming" };   // a rename in progress
     inline const juce::String rootTag { "HeftPreset" };
 
     // Range and default of each preset parameter, taken from the plugin's own
