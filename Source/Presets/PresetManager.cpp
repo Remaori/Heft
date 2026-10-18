@@ -511,7 +511,8 @@ juce::Result PresetManager::renameCurrent (const juce::String& newName)
     if (! newName.equalsIgnoreCase (current.name) && userPresetExists (newName))
         return juce::Result::fail ("A preset called \"" + newName + "\" already exists.");
 
-    if (! from.moveFileTo (userFolder.getChildFile (newName + PresetFile::extension)))
+    // Same as Save as: a change of case only ("kick" to "Kick") really changes the file name.
+    if (! renameExactly (from, newName))
         return juce::Result::fail ("Couldn't rename \"" + current.name + "\". The file may be read-only or in use.");
 
     {

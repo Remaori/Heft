@@ -805,6 +805,36 @@ void testInterruptedRenames (HeftAudioProcessor& processor, const juce::File& sc
     endSection();
 }
 
+//==============================================================================
+void testRenameCase (HeftAudioProcessor& processor, const juce::File& scratch)
+{
+    section ("Rename that only changes the case");
+    {
+        auto& apvts = processor.apvts;
+        const auto folder = scratch.getChildFile ("Rename case");
+        PresetManager manager (apvts, folder);
+
+        setParam (apvts, ParamIDs::fatness, 45.0f);
+        manager.saveAs ("kick");
+        setParam (apvts, ParamIDs::color, 70.0f);
+        check (manager.getCurrentName() == "kick" && manager.isModified(), "\"kick *\" is loaded");
+
+        check (manager.renameCurrent ("Kick").wasOk(), "rename to \"Kick\"");
+        const auto files = folder.findChildFiles (juce::File::findFiles, false, "*");
+        check (files.size() == 1 && files[0].getFileName() == "Kick.heftpreset",
+               "a single file, now spelled Kick.heftpreset: " + (files.isEmpty() ? juce::String ("none") : files[0].getFileName()));
+        check (userNames (manager) == juce::StringArray { "Kick" }, "listed once, as Kick");
+        check (manager.getCurrentName() == "Kick" && manager.isModified(), "the current preset is Kick, and the asterisk didn't change");
+
+        manager.saveAs ("Snare");
+        manager.load (*findEntry (manager, PresetManager::Source::user, "Kick"));
+        check (manager.renameCurrent ("SNARE").failed() && userNames (manager) == juce::StringArray { "Kick", "Snare" },
+               "renaming onto another preset (in any case) still never overwrites it");
+        resetParams (apvts);
+    }
+    endSection();
+}
+
 } // namespace
 
 int main()
@@ -822,6 +852,7 @@ int main()
         testTemporaryFiles (processor, scratch.folder);
         testSaveAsCase (processor, scratch.folder);
         testInterruptedRenames (processor, scratch.folder);
+        testRenameCase (processor, scratch.folder);
     }
 
     testProjectState();
