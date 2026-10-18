@@ -5,7 +5,18 @@ text of its release on GitHub, so it's written for people who use the plugin.
 
 ## Unreleased
 
-Nothing yet.
+Small fixes to renaming presets. No change to the sound.
+
+- **Rename keeps the capitals you type.** Renaming a preset by changing only its capitals
+  (for example "kick" to "Kick") now really renames the file, just like Save as already
+  did, so the list and the bar show the same name.
+- **A preset caught in an interrupted rename comes back.** If Heft or your DAW closed in
+  the middle of renaming a preset, the preset could stay hidden in the presets folder
+  under a temporary name. Heft now gives it its name back (or "Name (recovered)" if that
+  name is taken) and it shows up in the list again.
+- **Safer renaming in a rare case.** If another program deletes a preset at the very
+  moment Heft is renaming it, Heft now simply stops instead of attempting a move it
+  shouldn't.
 
 ## 0.4.1
 
