@@ -27,9 +27,6 @@ Small fixes to presets and projects. No change to the sound.
 - **Import can't leave half a preset behind.** Imported presets are now written the same
   safe way as Save (to a temporary file first), so a full disk or a crash in the middle
   can't leave a broken file in the presets folder.
-- **Lighter on the CPU while Fatness or Color move.** When you turn them or automate
-  them, Heft now recalculates its filters a little less often, with no audible
-  difference.
 
 ## 0.4.1
 
