@@ -323,6 +323,14 @@ THIRD_PARTY_NOTICES.txt   Licenses of the third-party code inside the plugin bin
 After each change: `build.bat` (or `build.ps1 -Measure` to see the
 measurements) and reopen REAPER.
 
+To prove that a code change leaves the sound alone, render fixed signals with the build
+from before the change and compare after it (a change to `Tuning.h` is meant to fail this):
+
+```powershell
+build\HeftMeasure_artefacts\Release\HeftMeasure.exe build\Heft_artefacts\Release\VST3\Heft.vst3 --null-render build\null\before
+build\HeftMeasure_artefacts\Release\HeftMeasure.exe build\Heft_artefacts\Release\VST3\Heft.vst3 --null-compare build\null\before
+```
+
 ## Reference measurements (HeftMeasure, 48 kHz)
 
 - Latency: **122 samples** (2.54 ms at 48 kHz): 61 for the saturation oversampling and 61
@@ -341,9 +349,10 @@ measurements) and reopen REAPER.
 - Level Match: loudness (K-weighted) difference 0.00–0.01 dB in all cases, including
   55 Hz kick hits.
 - Bypass: no step larger than the signal's own (no click).
-- CPU (one core, 48 kHz, 512-sample blocks): about 3 % with the defaults and 4.5 % with
-  everything on (Mix below 100 %, clipper, Level Match). Measured on the development PC;
-  your numbers will differ.
+- CPU (one core, 48 kHz, 512-sample blocks): about 1.9 % with the defaults and 2.8 % with
+  everything on (Mix below 100 %, clipper, Level Match); 1.7 / 2.5 % at 44.1 kHz with
+  64-sample blocks and 3.7 / 5.4 % at 96 kHz with 128-sample blocks. Measured on the
+  development PC; your numbers will differ.
 
 ## Known limitations
 
@@ -369,7 +378,8 @@ measurements) and reopen REAPER.
   grows with Color, by design. If you want even harmonics on the "dark" side too, raise `biasAtMinColor`.
 - Fixed latency of 122 samples (2.5 ms at 48 kHz, half that at 96 kHz). REAPER
   compensates for it, but you'll notice it when monitoring live through the plugin.
-- Stereo in and out only. No M/S mode and no undo for knob or preset changes.
+- Stereo, or mono on mono tracks; not mono in with stereo out. No M/S mode and no undo
+  for knob or preset changes.
 - Presets: no subfolders or categories, tags, search or favourites, and they aren't
   exposed as the host's "programs" (use Heft's own list). Only one placeholder factory
   preset for now; the real ones come after tuning the sound by ear.

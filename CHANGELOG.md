@@ -5,8 +5,22 @@ text of its release on GitHub, so it's written for people who use the plugin.
 
 ## Unreleased
 
-Small fixes to presets and projects. No change to the sound.
+About 40 % less CPU, mono tracks and fixes for presets, projects and broken input. No
+change to the sound.
 
+- **About 40 % less CPU.** The oversampling filters, most of Heft's work, now do the same
+  calculations without moving data around. The output is identical bit for bit. On the
+  development PC, at 48 kHz: 1.9 % of one core with the default settings (was 3.0 %) and
+  2.8 % with everything on (was 4.5 %).
+- **Works on mono tracks.** Hosts that follow the plugin's channel layouts can now put
+  Heft on a mono track (mono in, mono out). Both meter bars show the signal.
+- **A broken signal before Heft no longer silences it for good.** If a plugin before Heft
+  sent an invalid value (NaN or infinity), Heft kept outputting nothing usable until you
+  reloaded it, and an absurdly loud sample could freeze Level Match. Such samples are now
+  replaced with silence, and Heft carries on normally.
+- **The end of a sound is never cut.** Heft now tells the host that its output goes on for
+  about 0.3 s after the input stops (its latency plus a filter's decay). Hosts that pause
+  plugins in silence could otherwise cut the last moments of a sound.
 - **Rename keeps the capitals you type.** Renaming a preset by changing only its capitals
   (for example "kick" to "Kick") now really renames the file, just like Save as already
   did, so the list and the bar show the same name.
