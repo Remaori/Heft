@@ -1,7 +1,7 @@
 // HeftTests: unit tests for the parts of Heft that aren't audio: preset files, the
-// preset manager, the A/B comparator and the state saved with projects. It runs the
-// code directly (no host, no window) and works in a temporary folder, never in
-// Documents\Heft\Presets.
+// preset manager, the A/B comparator and the state saved with projects, plus the rule
+// that processing never allocates memory. It runs the code directly (no host, no
+// window) and works in a temporary folder, never in Documents\Heft\Presets.
 //
 // Usage: HeftTests.exe   (exit code 0 = everything passed)
 
@@ -10,6 +10,29 @@
 
 #include <clocale>
 #include <cstdio>
+#include <cstdlib>
+#include <new>
+
+// Every operator new of the program goes through here (new[], nothrow and sized delete
+// forward to these two), so a test can count what the audio code allocates. Only the
+// thread that turns counting on is counted.
+// shortcut: juce::HeapBlock (AudioBuffer::setSize, juce::Array) calls malloc directly and
+// isn't counted; hook the CRT heap if one of those ever moves into processBlock.
+static thread_local bool countingAllocations = false;
+static thread_local int allocationCount = 0;
+
+void* operator new (std::size_t size)
+{
+    if (countingAllocations)
+        ++allocationCount;
+
+    if (auto* p = std::malloc (size == 0 ? 1 : size))
+        return p;
+
+    throw std::bad_alloc();
+}
+
+void operator delete (void* p) noexcept { std::free (p); }
 
 namespace
 {
@@ -866,6 +889,66 @@ void testRenameCase (HeftAudioProcessor& processor, const juce::File& scratch)
     endSection();
 }
 
+//==============================================================================
+void testNoAllocations()
+{
+    section ("Audio thread: processing never allocates memory");
+    {
+        HeftAudioProcessor processor;
+        processor.prepareToPlay (48000.0, 512);
+
+        juce::AudioBuffer<float> announced (2, 512), bigger (2, 2048);   // bigger: processed in chunks
+        juce::MidiBuffer midi;
+        juce::Random random (1);
+        int normal = 0, bypassed = 0, chunked = 0;
+
+        const auto run = [&] (juce::AudioBuffer<float>& buffer, bool bypass, int& count)
+        {
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < buffer.getNumSamples(); ++i)
+                    buffer.setSample (ch, i, random.nextFloat() - 0.5f);
+
+            allocationCount = 0;
+            countingAllocations = true;
+
+            if (bypass)
+                processor.processBlockBypassed (buffer, midi);
+            else
+                processor.processBlock (buffer, midi);
+
+            countingAllocations = false;
+            count += allocationCount;
+        };
+
+        // Every knob and switch moves between blocks, so the coefficients, the clipper
+        // and both crossfades all run.
+        for (int round = 0; round < 4; ++round)
+        {
+            setParam (processor.apvts, ParamIDs::fatness, 10.0f + 25.0f * (float) round);
+            setParam (processor.apvts, ParamIDs::color, 90.0f - 25.0f * (float) round);
+            setParam (processor.apvts, ParamIDs::mix, 40.0f + 20.0f * (float) round);
+            setParam (processor.apvts, ParamIDs::output, -6.0f + 3.0f * (float) round);
+            setParam (processor.apvts, ParamIDs::clipper, (float) (round % 2));
+            setParam (processor.apvts, ParamIDs::levelMatch, (float) (round / 2));
+
+            run (announced, false, normal);
+            run (announced, true, bypassed);
+            run (bigger, false, chunked);
+        }
+
+        check (normal == 0, "processBlock (" + juce::String (normal) + " allocations)");
+        check (bypassed == 0, "processBlockBypassed (" + juce::String (bypassed) + " allocations)");
+        check (chunked == 0, "a block bigger than announced (" + juce::String (chunked) + " allocations)");
+
+        allocationCount = 0;
+        countingAllocations = true;
+        const juce::String text (random.nextInt (1000) + 100000);
+        countingAllocations = false;
+        check (allocationCount > 0 && text.isNotEmpty(), "the counter does see allocations");
+    }
+    endSection();
+}
+
 } // namespace
 
 int main()
@@ -889,6 +972,7 @@ int main()
     testProjectState();
     testABComparator (scratch.folder);
     testFactoryPresets (scratch.folder);
+    testNoAllocations();
 
     std::printf ("\n%s\n", failures == 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED");
     return failures == 0 ? 0 : 1;
