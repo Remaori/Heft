@@ -612,9 +612,8 @@ void testABComparator (const juce::File& scratch)
         setParam (apvts, ParamIDs::fatness, 70.0f);
         check (manager.getCurrentName() == "Default" && manager.isModified(), "A: Default *");
 
-        const auto before = manager.getChangeCount();
         manager.switchTo (Slot::a);
-        check (manager.getChangeCount() == before && getParam (apvts, ParamIDs::fatness) == 70.0f,
+        check (manager.getActiveSlot() == Slot::a && getParam (apvts, ParamIDs::fatness) == 70.0f && manager.isModified(),
                "clicking the active letter does nothing");
 
         manager.switchTo (Slot::b);

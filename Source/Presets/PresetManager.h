@@ -45,7 +45,6 @@ public:
     ~PresetManager() override;
 
     static juce::File defaultUserFolder();   // Documents\Heft\Presets
-    const juce::File& getUserFolder() const { return userFolder; }
 
     // False if Documents can't be found. Cached, without touching the disk: the UI asks
     // 30 times a second and Documents may be on a network drive or OneDrive. Updated in
@@ -105,9 +104,6 @@ public:
     inline static const juce::Identifier stateVersionId { "stateVersion" };
     static constexpr int stateVersion = 2;
 
-    // Goes up on every change, so the UI can refresh cheaply from its timer.
-    juce::uint32 getChangeCount() const { return changeCount.load(); }
-
     // How a deleted preset goes away. Defaults to the Recycle Bin; tests delete for real.
     std::function<bool (const juce::File&)> removeFile = [] (const juce::File& f) { return f.moveToTrash(); };
 
@@ -151,7 +147,6 @@ private:
     std::array<SlotData, 2> slots;
     int activeSlot = 0;
 
-    std::atomic<juce::uint32> changeCount { 0 };
     std::atomic<bool> userFolderAvailable { false };
     std::unique_ptr<juce::FileChooser> chooser;
 

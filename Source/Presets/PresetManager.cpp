@@ -216,7 +216,6 @@ void PresetManager::setCurrent (const Ref& ref, const Values& snapshot)
 
 void PresetManager::changed()
 {
-    ++changeCount;
     sendChangeMessage();   // thread-safe: the listeners are called on the message thread
 }
 
