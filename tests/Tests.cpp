@@ -116,6 +116,11 @@ void testPresetFile (HeftAudioProcessor& processor, const juce::File& scratch)
 
         check (fromXml ("<HeftPreset><Param id=\"mix\" value=\"40\"/></HeftPreset>", specs, v).wasOk() && v[2] == 40.0f,
                "a missing formatVersion is read as version 1");
+
+        const auto odd = "<HeftPreset formatVersion=\"1\"><Param id=\"fatness\" value=\"abc\"/>"
+                         "<Param id=\"color\" value=\"62,5\"/><Param id=\"output\" value=\" -3.5 \"/></HeftPreset>";
+        check (fromXml (odd, specs, v).wasOk() && v[0] == 25.0f && v[1] == 50.0f && v[3] == -3.5f,
+               "text that isn't a plain number takes the default, like in project state");
     }
     endSection();
 

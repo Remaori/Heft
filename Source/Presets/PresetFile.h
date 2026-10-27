@@ -83,6 +83,19 @@ namespace PresetFile
         return juce::jlimit (spec.minValue, spec.maxValue, value);
     }
 
+    // One value written as text, from a preset file or from a project's state: a plain
+    // number (then clamped), or else the fallback. "abc" or "62,5" would otherwise read
+    // as 0 or 62, so both places treat odd text the same way: as missing.
+    inline float parseValue (const ParamSpec& spec, const juce::String& text, float fallback)
+    {
+        const auto trimmed = text.trim();
+
+        if (trimmed.isEmpty() || ! trimmed.containsOnly ("0123456789.-+eE"))
+            return fallback;
+
+        return sanitise (spec, (float) trimmed.getDoubleValue());
+    }
+
     // True when every value is within half a knob step (0.05) and every switch matches.
     // Used for the "modified" asterisk.
     inline bool matches (const Values& a, const Values& b, const Specs& specs)
@@ -123,8 +136,8 @@ namespace PresetFile
         return root.toString();
     }
 
-    // Parameters are matched by id, never by position. Missing ones get their default,
-    // unknown ones are ignored, out-of-range values are clamped.
+    // Parameters are matched by id, never by position. Missing or unreadable ones get their
+    // default, unknown ones are ignored, out-of-range values are clamped.
     inline juce::Result fromXml (const juce::String& text, const Specs& specs, Values& out)
     {
         const auto xml = juce::XmlDocument::parse (text);
@@ -142,8 +155,8 @@ namespace PresetFile
             const auto id = param->getStringAttribute ("id");
 
             for (size_t i = 0; i < numParams; ++i)
-                if (id == specs[i].id && param->hasAttribute ("value"))
-                    values[i] = sanitise (specs[i], (float) param->getStringAttribute ("value").getDoubleValue());
+                if (id == specs[i].id)
+                    values[i] = parseValue (specs[i], param->getStringAttribute ("value"), values[i]);
         }
 
         out = values;

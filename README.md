@@ -95,8 +95,9 @@ tool, so loading a preset never turns it on or off) and not the window size.
   </HeftPreset>
   ```
 
-  Missing values take their default, values out of range are clamped, and files
-  made by a newer Heft are refused with a message instead of loading wrongly.
+  Missing or unreadable values (say `abc`, or `62,5` with a comma) take their default,
+  values out of range are clamped, and files made by a newer Heft are refused with a
+  message instead of loading wrongly.
 
 ### Factory presets
 

@@ -45,13 +45,7 @@ namespace
         auto values = fallback;
 
         for (size_t i = 0; i < PresetFile::numParams; ++i)
-        {
-            // Text that isn't a number would read as 0; keep the fallback instead.
-            const auto text = tree[juce::Identifier (specs[i].id)].toString().trim();
-
-            if (text.isNotEmpty() && text.containsOnly ("0123456789.-+eE"))
-                values[i] = PresetFile::sanitise (specs[i], (float) text.getDoubleValue());
-        }
+            values[i] = PresetFile::parseValue (specs[i], tree[juce::Identifier (specs[i].id)].toString(), values[i]);
 
         return values;
     }
