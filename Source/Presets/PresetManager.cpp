@@ -575,9 +575,9 @@ PresetManager::ImportResult PresetManager::importFiles (const juce::Array<juce::
 
     for (const auto& file : files)
     {
-        Values ignored {};
+        Values values {};
 
-        if (const auto valid = PresetFile::read (file, specs, ignored); valid.failed())
+        if (const auto valid = PresetFile::read (file, specs, values); valid.failed())
         {
             result.problems.add (file.getFileName() + " " + valid.getErrorMessage());
             continue;
@@ -591,9 +591,11 @@ PresetManager::ImportResult PresetManager::importFiles (const juce::Array<juce::
 
         const auto target = userFolder.getChildFile (name + PresetFile::extension);
 
-        if (! file.copyFileTo (target))
+        // Written like a save (temporary file, then swapped in), so a full disk or a
+        // crash never leaves half a preset in the folder.
+        if (const auto written = PresetFile::write (target, values, specs, JucePlugin_VersionString); written.failed())
         {
-            result.problems.add ("Couldn't copy " + file.getFileName() + ".");
+            result.problems.add (written.getErrorMessage());
             continue;
         }
 

@@ -437,6 +437,13 @@ void testPresetManager (HeftAudioProcessor& processor, const juce::File& scratch
 
         const auto again = manager.importFiles ({ outside.getChildFile ("Imported.heftpreset") });
         check (again.imported == 1 && userNames (manager).contains ("Imported (2)"), "importing again adds \" (2)\"");
+
+        outside.getChildFile ("Edited.heftpreset")
+            .replaceWithText ("<HeftPreset formatVersion=\"1\"><Param id=\"fatness\" value=\"150\"/><Junk/></HeftPreset>");
+        manager.importFiles ({ outside.getChildFile ("Edited.heftpreset") });
+        const auto imported = userFolder.getChildFile ("Edited.heftpreset").loadFileAsString();
+        check (imported.contains ("id=\"fatness\" value=\"100.0\"") && ! imported.contains ("Junk"),
+               "the imported file is written by Heft with the values it read, not copied as it was");
     }
     endSection();
 
