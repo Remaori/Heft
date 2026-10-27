@@ -4,6 +4,12 @@
 // true peak), level match (K-weighted loudness), bypass crossfade and CPU use.
 //
 // Usage:  HeftMeasure.exe "path\to\Heft.vst3"
+//
+// Null test (proves a change doesn't touch the sound): render fixed signals on main
+// first, then compare after the change. A pure refactor must be bit-identical, or
+// differ by less than -140 dBFS (rounding from reordered operations).
+//         HeftMeasure.exe "path\to\Heft.vst3" --null-render  build\null\main
+//         HeftMeasure.exe "path\to\Heft.vst3" --null-compare build\null\main
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
@@ -13,6 +19,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <functional>
 #include <map>
 #include <vector>
@@ -32,12 +39,13 @@ struct Settings
 class Host
 {
 public:
-    explicit Host (std::unique_ptr<juce::AudioPluginInstance> p) : plugin (std::move (p))
+    explicit Host (std::unique_ptr<juce::AudioPluginInstance> p, double sampleRate = kSampleRate, int maxBlockSize = kBlockSize)
+        : plugin (std::move (p)), blockSize (maxBlockSize)
     {
         for (auto* param : plugin->getParameters())
             params[param->getName (64)] = param;
 
-        plugin->prepareToPlay (kSampleRate, kBlockSize);
+        plugin->prepareToPlay (sampleRate, blockSize);
     }
 
     ~Host() { plugin->releaseResources(); }
@@ -58,15 +66,15 @@ public:
                             const std::function<void (size_t)>& beforeBlock = {})
     {
         std::vector<float> output (input.size());
-        juce::AudioBuffer<float> buffer (2, kBlockSize);
+        juce::AudioBuffer<float> buffer (2, blockSize);
         juce::MidiBuffer midi;
 
-        for (size_t start = 0; start < input.size(); start += kBlockSize)
+        for (size_t start = 0; start < input.size(); start += (size_t) blockSize)
         {
             if (beforeBlock)
                 beforeBlock (start);
 
-            const auto n = (int) std::min<size_t> (kBlockSize, input.size() - start);
+            const auto n = (int) std::min<size_t> ((size_t) blockSize, input.size() - start);
             buffer.setSize (2, n, false, false, true);
 
             for (int ch = 0; ch < 2; ++ch)
@@ -110,6 +118,7 @@ private:
     }
 
     std::unique_ptr<juce::AudioPluginInstance> plugin;
+    int blockSize;
     std::map<juce::String, juce::AudioProcessorParameter*> params;
 };
 
@@ -279,6 +288,131 @@ void check (bool ok, const char* what)
     failures += ok ? 0 : 1;
 }
 
+//==============================================================================
+// Null test: fixed renders, each from a fresh instance so nothing carries over.
+using MakeHost = std::function<std::unique_ptr<Host>()>;
+
+std::vector<float> sweep (double amplitude, double seconds)
+{
+    std::vector<float> s ((size_t) (seconds * kSampleRate));
+    const auto k = std::log (20000.0 / 20.0);
+
+    for (size_t i = 0; i < s.size(); ++i)
+    {
+        const auto t = (double) i / kSampleRate;
+        s[i] = (float) (amplitude * std::sin (2.0 * kPi * 20.0 * seconds / k * (std::exp (t / seconds * k) - 1.0)));
+    }
+
+    return s;
+}
+
+std::vector<std::pair<juce::String, std::vector<float>>> nullRenders (const MakeHost& makeHost)
+{
+    const std::pair<const char*, Settings> settings[] {
+        { "default", { 25.0f, 50.0f, 0.0f, 100.0f, false, false } },
+        { "allon",   { 60.0f, 60.0f, 0.0f, 70.0f, true, true } },
+        { "extreme", { 100.0f, 100.0f, 6.0f, 100.0f, true, false } },
+        { "dark",    { 80.0f, 0.0f, -3.0f, 50.0f, false, true } } };
+
+    auto burst = noise (0.1, 4.0);
+
+    for (size_t i = (size_t) kSampleRate; i < (size_t) (1.5 * kSampleRate); ++i)
+        burst[i] *= 40.0f;   // half a second with peaks at +12 dBFS
+
+    const std::pair<const char*, std::vector<float>> signals[] {
+        { "sweep", sweep (0.5, 6.0) },
+        { "noise", noise (0.25, 6.0) },
+        { "kick", drumHits (0.9, 6.0) },
+        { "silence", std::vector<float> ((size_t) (3.0 * kSampleRate), 0.0f) },
+        { "burst", burst } };
+
+    std::vector<std::pair<juce::String, std::vector<float>>> renders;
+
+    for (const auto& [signalName, input] : signals)
+        for (const auto& [settingsName, s] : settings)
+        {
+            auto host = makeHost();
+            host->apply (s);
+            renders.push_back ({ juce::String (signalName) + "_" + settingsName, host->run (input) });
+        }
+
+    // Automation: Fatness and Color move every block for 2 s from the middle, then stay.
+    auto automation = drumHits (0.9, 8.0);
+    const auto bed = noise (0.05, 8.0);
+
+    for (size_t i = 0; i < automation.size(); ++i)
+        automation[i] += bed[i];
+
+    for (const auto& [settingsName, s] : { settings[0], settings[1] })
+    {
+        auto host = makeHost();
+        host->apply (s);
+        const auto half = automation.size() / 2;
+
+        renders.push_back ({ juce::String ("automation_") + settingsName, host->run (automation, [&] (size_t start)
+        {
+            if (start < half)
+                return;
+
+            const auto t = (float) std::min (1.0, (double) (start - half) / (2.0 * kSampleRate));
+            auto moved = s;
+            moved.fatness += t * (95.0f - s.fatness);
+            moved.color   += t * (5.0f - s.color);
+            host->apply (moved);
+        }) });
+    }
+
+    return renders;
+}
+
+int nullRender (const MakeHost& makeHost, const juce::File& folder)
+{
+    folder.createDirectory();
+
+    for (const auto& [name, output] : nullRenders (makeHost))
+        folder.getChildFile (name + ".f32").replaceWithData (output.data(), output.size() * sizeof (float));
+
+    std::printf ("Null-test renders written to %s\n", folder.getFullPathName().toRawUTF8());
+    return 0;
+}
+
+int nullCompare (const MakeHost& makeHost, const juce::File& folder)
+{
+    int changed = 0;
+    std::printf ("\n== Null test against %s ==\n", folder.getFullPathName().toRawUTF8());
+
+    for (const auto& [name, output] : nullRenders (makeHost))
+    {
+        juce::MemoryBlock reference;
+
+        if (! folder.getChildFile (name + ".f32").loadFileAsData (reference) || reference.getSize() != output.size() * sizeof (float))
+        {
+            std::printf ("  %-22s missing or a different length\n", name.toRawUTF8());
+            ++changed;
+            continue;
+        }
+
+        const auto* ref = static_cast<const float*> (reference.getData());
+        double maxDiff = 0.0;
+
+        for (size_t i = 0; i < output.size(); ++i)
+            maxDiff = std::max (maxDiff, (double) std::abs (output[i] - ref[i]));
+
+        if (std::memcmp (ref, output.data(), reference.getSize()) == 0)
+            std::printf ("  %-22s bit-identical\n", name.toRawUTF8());
+        else if (maxDiff < 1.0e-7)   // -140 dBFS
+            std::printf ("  %-22s rounding only, max diff %.1f dBFS\n", name.toRawUTF8(), toDbfs (maxDiff));
+        else
+        {
+            std::printf ("  %-22s CHANGED, max diff %.1f dBFS\n", name.toRawUTF8(), toDbfs (maxDiff));
+            ++changed;
+        }
+    }
+
+    std::printf ("\n%s\n", changed == 0 ? "NULL TEST PASSED" : "NULL TEST: THE OUTPUT CHANGED");
+    return changed == 0 ? 0 : 1;
+}
+
 int measureLatency (Host& host, const Settings& settings)
 {
     host.apply (settings);
@@ -319,15 +453,34 @@ int main (int argc, char* argv[])
     }
 
     juce::String error;
-    auto instance = format.createInstanceFromDescription (*types[0], kSampleRate, kBlockSize, error);
+    const auto makeHostAt = [&] (double sampleRate, int blockSize) -> std::unique_ptr<Host>
+    {
+        auto instance = format.createInstanceFromDescription (*types[0], sampleRate, blockSize, error);
+        return instance != nullptr ? std::make_unique<Host> (std::move (instance), sampleRate, blockSize) : nullptr;
+    };
 
-    if (instance == nullptr)
+    auto mainHost = makeHostAt (kSampleRate, kBlockSize);
+
+    if (mainHost == nullptr)
     {
         std::printf ("ERROR loading the plugin: %s\n", error.toRawUTF8());
         return 2;
     }
 
-    Host host (std::move (instance));
+    if (argc >= 4)
+    {
+        const juce::String mode (argv[2]);
+        const auto folder = juce::File::getCurrentWorkingDirectory().getChildFile (juce::String::fromUTF8 (argv[3]));
+        const MakeHost makeHost = [&] { return makeHostAt (kSampleRate, kBlockSize); };
+
+        if (mode == "--null-render")
+            return nullRender (makeHost, folder);
+
+        if (mode == "--null-compare")
+            return nullCompare (makeHost, folder);
+    }
+
+    auto& host = *mainHost;
     const auto amp = 0.5;   // -6 dBFS peak
 
     // --- Latency --------------------------------------------------------------
