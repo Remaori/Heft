@@ -126,10 +126,13 @@ double HeftAudioProcessor::getTailLengthSeconds() const
     return latencySeconds + 10.0 / (juce::MathConstants<double>::twoPi * tuning::dcBlockerHz);   // ten time constants
 }
 
+// Stereo, or mono on a mono track. Mono in, stereo out isn't offered: the second output
+// would stay silent.
 bool HeftAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
-    return layouts.getMainInputChannelSet() == juce::AudioChannelSet::stereo()
-        && layouts.getMainOutputChannelSet() == juce::AudioChannelSet::stereo();
+    const auto output = layouts.getMainOutputChannelSet();
+    return (output == juce::AudioChannelSet::stereo() || output == juce::AudioChannelSet::mono())
+        && layouts.getMainInputChannelSet() == output;
 }
 
 //==============================================================================
@@ -335,11 +338,11 @@ void HeftAudioProcessor::processChunk (juce::dsp::AudioBlock<float> block) noexc
         }
     }
 
-    // --- Meters for the editor -------------------------------------------------
-    for (size_t ch = 0; ch < numChannels; ++ch)
+    // --- Meters for the editor (a mono signal shows on both bars) ----------------
+    for (size_t ch = 0; ch < 2; ++ch)
     {
-        storeMax (meters.inputPeak[ch], inputPeak[ch]);
-        storeMax (meters.outputPeak[ch], outputPeak[ch]);
+        storeMax (meters.inputPeak[ch], inputPeak[std::min (ch, numChannels - 1)]);
+        storeMax (meters.outputPeak[ch], outputPeak[std::min (ch, numChannels - 1)]);
     }
 
     if (bypassMix.getCurrentValue() < 1.0f)

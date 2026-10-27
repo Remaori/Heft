@@ -1019,6 +1019,70 @@ void testOversampler()
     endSection();
 }
 
+void testMono()
+{
+    section ("Host: mono tracks");
+    {
+        using Set = juce::AudioChannelSet;
+        const auto layout = [] (const Set& in, const Set& out)
+        {
+            juce::AudioProcessor::BusesLayout l;
+            l.inputBuses.add (in);
+            l.outputBuses.add (out);
+            return l;
+        };
+
+        // Fatness, Mix and Level Match on, the same noise in mono and on both stereo channels.
+        const auto render = [&] (int channels)
+        {
+            HeftAudioProcessor processor;
+            setParam (processor.apvts, ParamIDs::fatness, 60.0f);
+            setParam (processor.apvts, ParamIDs::mix, 70.0f);
+            setParam (processor.apvts, ParamIDs::levelMatch, 1.0f);
+
+            if (channels == 1)
+                processor.setBusesLayout (layout (Set::mono(), Set::mono()));
+
+            processor.prepareToPlay (48000.0, 512);
+            juce::AudioBuffer<float> buffer (channels, 512 * 94);   // a whole number of blocks
+            juce::Random random (3);
+
+            for (int i = 0; i < buffer.getNumSamples(); ++i)
+            {
+                const auto x = 0.5f * random.nextFloat() - 0.25f;
+
+                for (int ch = 0; ch < channels; ++ch)
+                    buffer.setSample (ch, i, x);
+            }
+
+            juce::MidiBuffer midi;
+
+            for (int start = 0; start < buffer.getNumSamples(); start += 512)
+            {
+                juce::AudioBuffer<float> view (buffer.getArrayOfWritePointers(), channels, start, 512);
+                processor.processBlock (view, midi);
+            }
+
+            return std::pair { buffer, processor.meters.outputPeak[1].load() > 0.0f };
+        };
+
+        HeftAudioProcessor processor;
+        check (processor.checkBusesLayoutSupported (layout (Set::mono(), Set::mono()))
+                   && processor.checkBusesLayoutSupported (layout (Set::stereo(), Set::stereo())),
+               "mono and stereo are accepted");
+        check (! processor.checkBusesLayoutSupported (layout (Set::mono(), Set::stereo()))
+                   && ! processor.checkBusesLayoutSupported (layout (Set::stereo(), Set::mono())),
+               "mixed layouts aren't");
+
+        const auto [mono, bothBars] = render (1);
+        const auto stereo = render (2).first;
+        check (std::memcmp (mono.getReadPointer (0), stereo.getReadPointer (0), sizeof (float) * (size_t) mono.getNumSamples()) == 0,
+               "mono sounds exactly like stereo with the same signal on both channels");
+        check (bothBars, "both meter bars show a mono signal");
+    }
+    endSection();
+}
+
 void testTailLength()
 {
     section ("Host: the tail covers the latency and the DC blocker's decay");
@@ -1125,6 +1189,7 @@ int main()
     testBrokenInput();
     testTailLength();
     testOversampler();
+    testMono();
 
     std::printf ("\n%s\n", failures == 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED");
     return failures == 0 ? 0 : 1;
