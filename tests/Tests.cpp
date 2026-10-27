@@ -592,6 +592,15 @@ void testProjectState()
         HeftAudioProcessor other;
         other.setStateInformation (normal.getData(), (int) normal.getSize());
         check (other.presetManager.getCurrentName() == "Kick 2", "a normal name is kept");
+
+        // Longer than Save as allows, but Heft makes such names itself when it recovers a preset.
+        const auto longName = juce::String::repeatedString ("x", 64) + " (recovered)";
+        const auto recovered = stateFromXml ("<Parameters stateVersion=\"2\"><PARAM id=\"fatness\" value=\"40.0\"/>"
+                                             "<ABState active=\"A\"><SlotA presetSource=\"user\" presetName=\"" + longName
+                                             + "\"/></ABState></Parameters>");
+        HeftAudioProcessor third;
+        third.setStateInformation (recovered.getData(), (int) recovered.getSize());
+        check (third.presetManager.getCurrentName() == longName, "a name longer than 64 characters is kept");
     }
     endSection();
 }

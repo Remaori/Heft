@@ -756,11 +756,12 @@ void PresetManager::readState (const juce::ValueTree& abState)
                 slot.preset = { sourceFromString (tree[presetSourceId].toString()), tree[presetNameId].toString() };
 
                 // A project can come from anyone, and a user preset's name becomes a file path:
-                // a name that isn't a valid file name ("..\x", "C:\x") is dropped.
+                // a name that could point outside the folder ("..\x", "C:\x") is dropped. Not
+                // validateName: Heft itself makes longer names ("... (recovered)", "... (2)").
                 if (slot.preset.source == Source::defaultPreset)
                     slot.preset.name = defaultName;
                 else if (slot.preset.source == Source::none || slot.preset.name.isEmpty()
-                         || (slot.preset.source == Source::user && PresetFile::validateName (slot.preset.name).isNotEmpty()))
+                         || (slot.preset.source == Source::user && slot.preset.name.containsAnyOf ("\\/:")))
                     slot.preset = {};
 
                 const auto snapshot = tree.getChildWithName (snapshotType);
