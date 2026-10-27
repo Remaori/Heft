@@ -10,6 +10,7 @@
 #include "DSP/DcBlocker.h"
 #include "DSP/KWeighting.h"
 #include "DSP/LevelMatcher.h"
+#include "DSP/Oversampler.h"
 #include "DSP/Saturator.h"
 #include "DSP/SoftClipper.h"
 #include "DSP/TiltFilter.h"
@@ -98,14 +99,14 @@ private:
     // Processing chain (in order).
     Compressor compressor;                         // 1
     TiltFilter preEmphasis;                        // 2
-    juce::dsp::Oversampling<float> oversampling;   // 3 + 4
+    Oversampler oversampling;                      // 3 + 4
     TiltFilter deEmphasis;                         // 5
     DcBlocker dcBlocker;                           // 6
     KWeighting inputWeighting, wetWeighting;       // 7: level match measures K-weighted loudness
     LevelMatcher levelMatcher;
-    juce::dsp::Oversampling<float> dryOversampling;   // 8: Mix. The dry signal runs through the same
+    Oversampler dryOversampling;                      // 8: Mix. The dry signal runs through the same
     juce::dsp::DryWetMixer<float> dryWetMixer;        //    filters as the wet one, so both line up exactly
-    juce::dsp::Oversampling<float> clipperOversampling;   // 9: clipper at 4x
+    Oversampler clipperOversampling;                  // 9: clipper at 4x
 
     // Host bypass: the full chain keeps running and we crossfade to the delayed input.
     Delay bypassDelay;

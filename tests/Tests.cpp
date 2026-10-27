@@ -11,6 +11,7 @@
 #include <clocale>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <new>
 
 // Every operator new of the program goes through here (new[], nothrow and sized delete
@@ -964,6 +965,60 @@ void testNoAllocations()
     endSection();
 }
 
+void testOversampler()
+{
+    section ("Oversampler: bit-identical to juce::dsp::Oversampling");
+    {
+        Oversampler ours (2, 2);
+        juce::dsp::Oversampling<float> reference (2, 2, juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple, true, true);
+        ours.initProcessing (512);
+        reference.initProcessing (512);
+        check (ours.getLatencyInSamples() == reference.getLatencyInSamples(),
+               "same latency (" + juce::String (ours.getLatencyInSamples(), 3) + " samples)");
+
+        juce::AudioBuffer<float> a (2, 512), b (2, 512);
+        juce::Random random (9);
+        bool upSame = true, downSame = true;
+
+        for (int round = 0; round < 20; ++round)
+            for (const int numSamples : { 512, 1, 17, 300, 64 })
+            {
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int i = 0; i < numSamples; ++i)
+                    {
+                        const auto x = 2.0f * random.nextFloat() - 1.0f;
+                        a.setSample (ch, i, x);
+                        b.setSample (ch, i, x);
+                    }
+
+                auto blockA = juce::dsp::AudioBlock<float> (a).getSubBlock (0, (size_t) numSamples);
+                auto blockB = juce::dsp::AudioBlock<float> (b).getSubBlock (0, (size_t) numSamples);
+                auto upA = ours.processSamplesUp (blockA);
+                auto upB = reference.processSamplesUp (blockB);
+
+                for (size_t ch = 0; ch < 2; ++ch)
+                {
+                    upSame = upSame && std::memcmp (upA.getChannelPointer (ch), upB.getChannelPointer (ch),
+                                                    upA.getNumSamples() * sizeof (float)) == 0;
+
+                    // Something nonlinear in between, as in the plugin.
+                    for (size_t i = 0; i < upA.getNumSamples(); ++i)
+                        upA.getChannelPointer (ch)[i] = upB.getChannelPointer (ch)[i] = std::tanh (3.0f * upB.getChannelPointer (ch)[i]);
+                }
+
+                ours.processSamplesDown (blockA);
+                reference.processSamplesDown (blockB);
+
+                for (int ch = 0; ch < 2; ++ch)
+                    downSame = downSame && std::memcmp (a.getReadPointer (ch), b.getReadPointer (ch), (size_t) numSamples * sizeof (float)) == 0;
+            }
+
+        check (upSame, "4x up: every sample identical, with blocks of 512, 1, 17, 300 and 64");
+        check (downSame, "4x down (with the fractional delay): every sample identical");
+    }
+    endSection();
+}
+
 void testTailLength()
 {
     section ("Host: the tail covers the latency and the DC blocker's decay");
@@ -1069,6 +1124,7 @@ int main()
     testNoAllocations();
     testBrokenInput();
     testTailLength();
+    testOversampler();
 
     std::printf ("\n%s\n", failures == 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED");
     return failures == 0 ? 0 : 1;

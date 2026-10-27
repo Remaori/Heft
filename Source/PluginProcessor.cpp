@@ -21,14 +21,6 @@ namespace
         if (value < target.load (std::memory_order_relaxed))
             target.store (value, std::memory_order_relaxed);
     }
-
-    juce::dsp::Oversampling<float> makeOversampling (int factorLog2)
-    {
-        return juce::dsp::Oversampling<float> (2, (size_t) factorLog2,
-                                               juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple,
-                                               true,    // maximum filter quality
-                                               true);   // integer latency (hosts only accept whole samples)
-    }
 }
 
 HeftAudioProcessor::HeftAudioProcessor()
@@ -36,9 +28,9 @@ HeftAudioProcessor::HeftAudioProcessor()
                           .withInput ("Input", juce::AudioChannelSet::stereo(), true)
                           .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "Parameters", createParameterLayout()),
-      oversampling (makeOversampling (tuning::oversamplingFactorLog2)),
-      dryOversampling (makeOversampling (tuning::oversamplingFactorLog2)),
-      clipperOversampling (makeOversampling (tuning::clipperOversamplingFactorLog2))
+      oversampling (2, tuning::oversamplingFactorLog2),
+      dryOversampling (2, tuning::oversamplingFactorLog2),
+      clipperOversampling (2, tuning::clipperOversamplingFactorLog2)
 {
     fatnessParam    = apvts.getRawParameterValue (ParamIDs::fatness);
     colorParam      = apvts.getRawParameterValue (ParamIDs::color);
@@ -359,7 +351,7 @@ void HeftAudioProcessor::processChunk (juce::dsp::AudioBlock<float> block) noexc
 
 // Mix: the dry copy goes through the same oversampling filters as the wet signal
 // (without the saturation). A plain delay (DryWetMixer::setWetLatency) is only exact
-// at low frequencies: juce::dsp::Oversampling reaches an integer latency with an
+// at low frequencies: the oversampler reaches an integer latency with an
 // allpass fractional delay, whose phase differs from a pure delay in the top octaves
 // (measured: Mix 50 % lost 1.5 dB at 20 kHz). With identical filters on both paths,
 // dry and wet line up at every frequency.
