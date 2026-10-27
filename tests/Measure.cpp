@@ -16,6 +16,7 @@
 
 #include "DSP/KWeighting.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -745,21 +746,33 @@ int main (int argc, char* argv[])
     }
 
     // --- CPU ---------------------------------------------------------------------------
-    std::printf ("\n== CPU (stereo, 48 kHz, %d-sample blocks, 20 s of noise) ==\n", kBlockSize);
+    // Median of five runs per case: a single run on a desktop PC varies by a few percent,
+    // and a CPU change only counts if it beats that noise.
+    std::printf ("\n== CPU (stereo, 4 s of noise, median of 5 runs) ==\n");
     {
-        const auto input = noise (0.25, 20.0);
-
-        for (const auto& [name, settings] : { std::pair { "Defaults (Mix 100 %, clipper off)    ", Settings { 25.0f, 50.0f, 0.0f, 100.0f, false, false } },
-                                              std::pair { "Everything on (Mix 70 %, clipper, LM)", Settings { 60.0f, 60.0f, 0.0f, 70.0f, true, true } } })
+        for (const auto& [sampleRate, blockSize] : { std::pair { 48000.0, 512 }, std::pair { 44100.0, 64 }, std::pair { 96000.0, 128 } })
         {
-            host.apply (settings);
-            host.run (noise (0.25, 1.0));   // warm-up
+            auto cpuHost = makeHostAt (sampleRate, blockSize);
+            const auto input = noise (0.25, 4.0 * sampleRate / kSampleRate);   // 4 s at this sample rate
 
-            const auto t0 = std::chrono::steady_clock::now();
-            host.run (input);
-            const auto seconds = std::chrono::duration<double> (std::chrono::steady_clock::now() - t0).count();
+            for (const auto& [name, settings] : { std::pair { "Defaults (Mix 100 %, clipper off)    ", Settings { 25.0f, 50.0f, 0.0f, 100.0f, false, false } },
+                                                  std::pair { "Everything on (Mix 70 %, clipper, LM)", Settings { 60.0f, 60.0f, 0.0f, 70.0f, true, true } } })
+            {
+                cpuHost->apply (settings);
+                cpuHost->run (noise (0.25, 1.0));   // warm-up
+                std::vector<double> percent;
 
-            std::printf ("  %s: %.2f %% of one core (%.0fx real time)\n", name, 100.0 * seconds / 20.0, 20.0 / seconds);
+                for (int run = 0; run < 5; ++run)
+                {
+                    const auto t0 = std::chrono::steady_clock::now();
+                    cpuHost->run (input);
+                    percent.push_back (100.0 * std::chrono::duration<double> (std::chrono::steady_clock::now() - t0).count() / 4.0);
+                }
+
+                std::sort (percent.begin(), percent.end());
+                std::printf ("  %5.1f kHz / %3d samples  %s: %.2f %% of one core (runs %.2f-%.2f)\n",
+                             sampleRate / 1000.0, blockSize, name, percent[2], percent.front(), percent.back());
+            }
         }
     }
 
