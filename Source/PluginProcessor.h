@@ -73,6 +73,9 @@ public:
     // Editor width in pixels (0 = default), saved with the project.
     std::atomic<int> editorWidth { 0 };
 
+    // The audio thread must never wait for a lock, so its atomics (these and the parameters') must be lock-free.
+    static_assert (std::atomic<float>::is_always_lock_free && std::atomic<int>::is_always_lock_free);
+
 private:
     using Delay = juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None>;
 
