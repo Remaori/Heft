@@ -227,7 +227,13 @@ void HeftAudioProcessor::processChunk (juce::dsp::AudioBlock<float> block) noexc
     // --- 1. Compressor + 2. pre-emphasis (base sample rate) -----------------
     for (size_t i = 0; i < numSamples; ++i)
     {
-        updateCoefficients (fatnessSmoothed.getNextValue(), colorSmoothed.getNextValue());
+        const auto fatness = fatnessSmoothed.getNextValue();
+        const auto color   = colorSmoothed.getNextValue();
+
+        // During a 50 ms glide, new coefficients every 16 samples (0.3 ms) sound the same as
+        // every sample, for a sixteenth of the work. The last step lands at most 15 samples late.
+        if ((i & 15) == 0)
+            updateCoefficients (fatness, color);
 
         float peak = 0.0f, loudness = 0.0f;
 
