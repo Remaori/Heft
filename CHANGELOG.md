@@ -5,7 +5,7 @@ text of its release on GitHub, so it's written for people who use the plugin.
 
 ## Unreleased
 
-Small fixes to renaming presets. No change to the sound.
+Small fixes to presets and projects. No change to the sound.
 
 - **Rename keeps the capitals you type.** Renaming a preset by changing only its capitals
   (for example "kick" to "Kick") now really renames the file, just like Save as already
@@ -17,6 +17,19 @@ Small fixes to renaming presets. No change to the sound.
 - **Safer renaming in a rare case.** If another program deletes a preset at the very
   moment Heft is renaming it, Heft now simply stops instead of attempting a move it
   shouldn't.
+- **A project from someone else can't touch files outside your presets folder.** A
+  project file could name its preset with a path (like `..\..\Desktop\x`), and Save,
+  Rename or Delete would then act on a preset file in that other place. Such a name is
+  now ignored and the slot opens as "Untitled", with its settings intact.
+- **Odd values in a preset file are read like in a project.** A value that isn't a plain
+  number (`abc`, or `62,5` written with a comma) now takes its default, instead of
+  reading as 0 or 62.
+- **Import can't leave half a preset behind.** Imported presets are now written the same
+  safe way as Save (to a temporary file first), so a full disk or a crash in the middle
+  can't leave a broken file in the presets folder.
+- **Lighter on the CPU while Fatness or Color move.** When you turn them or automate
+  them, Heft now recalculates its filters a little less often, with no audible
+  difference.
 
 ## 0.4.1
 
