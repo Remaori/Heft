@@ -5,6 +5,10 @@ text of its release on GitHub, so it's written for people who use the plugin.
 
 ## Unreleased
 
+Nothing yet.
+
+## 0.5.0
+
 About 40 % less CPU, mono tracks and fixes for presets, projects and broken input. No
 change to the sound.
 
