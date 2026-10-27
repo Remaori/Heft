@@ -964,6 +964,23 @@ void testNoAllocations()
     endSection();
 }
 
+void testTailLength()
+{
+    section ("Host: the tail covers the latency and the DC blocker's decay");
+    {
+        HeftAudioProcessor processor;
+        check (processor.getTailLengthSeconds() > 0.0 && std::isfinite (processor.getTailLengthSeconds()),
+               "finite and above 0 before the host sets a sample rate");
+
+        processor.setRateAndBufferSizeDetails (48000.0, 512);
+        processor.prepareToPlay (48000.0, 512);
+        const auto tail = processor.getTailLengthSeconds();
+        check (tail > processor.getLatencySamples() / 48000.0 + 0.2 && tail < 1.0,
+               "a bit over the latency + 0.2 s, under 1 s (" + juce::String (tail, 3) + " s)");
+    }
+    endSection();
+}
+
 void testBrokenInput()
 {
     section ("Audio thread: NaN, infinity or absurd levels in the input don't stick");
@@ -1051,6 +1068,7 @@ int main()
     testFactoryPresets (scratch.folder);
     testNoAllocations();
     testBrokenInput();
+    testTailLength();
 
     std::printf ("\n%s\n", failures == 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED");
     return failures == 0 ? 0 : 1;

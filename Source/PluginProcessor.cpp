@@ -125,6 +125,15 @@ void HeftAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     updateCoefficients (fatnessSmoothed.getCurrentValue(), colorSmoothed.getCurrentValue());
 }
 
+// After the input stops, the output goes on for the latency plus the DC blocker's decay.
+// Hosts that pause plugins in silence use this; with 0 they could cut the end of a sound.
+double HeftAudioProcessor::getTailLengthSeconds() const
+{
+    const auto sampleRate = getSampleRate();
+    const auto latencySeconds = sampleRate > 0.0 ? getLatencySamples() / sampleRate : 0.0;
+    return latencySeconds + 10.0 / (juce::MathConstants<double>::twoPi * tuning::dcBlockerHz);   // ten time constants
+}
+
 bool HeftAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
     return layouts.getMainInputChannelSet() == juce::AudioChannelSet::stereo()
