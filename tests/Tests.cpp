@@ -964,6 +964,68 @@ void testNoAllocations()
     endSection();
 }
 
+void testBrokenInput()
+{
+    section ("Audio thread: NaN, infinity or absurd levels in the input don't stick");
+    {
+        // 12 s of noise with Level Match on; "bad" (if not 0) replaces one sample at 1 s.
+        const auto render = [] (float bad)
+        {
+            HeftAudioProcessor processor;
+            setParam (processor.apvts, ParamIDs::fatness, 60.0f);
+            setParam (processor.apvts, ParamIDs::mix, 70.0f);
+            setParam (processor.apvts, ParamIDs::clipper, 1.0f);
+            setParam (processor.apvts, ParamIDs::levelMatch, 1.0f);
+            processor.prepareToPlay (48000.0, 512);
+
+            juce::AudioBuffer<float> buffer (2, 48000 * 12);
+            juce::Random random (5);
+
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < buffer.getNumSamples(); ++i)
+                    buffer.setSample (ch, i, 0.5f * random.nextFloat() - 0.25f);
+
+            if (bad != 0.0f)
+                buffer.setSample (0, 48000, bad);
+
+            juce::MidiBuffer midi;
+
+            for (int start = 0; start < buffer.getNumSamples(); start += 512)
+            {
+                juce::AudioBuffer<float> view (buffer.getArrayOfWritePointers(), 2, start, 512);
+                processor.processBlock (view, midi);
+            }
+
+            return buffer;
+        };
+
+        const auto clean = render (0.0f);
+        const std::pair<const char*, float> cases[] { { "NaN", std::numeric_limits<float>::quiet_NaN() },
+                                                      { "+infinity", std::numeric_limits<float>::infinity() },
+                                                      { "-infinity", -std::numeric_limits<float>::infinity() },
+                                                      { "1e30", 1.0e30f } };
+
+        for (const auto& [name, bad] : cases)
+        {
+            const auto out = render (bad);
+            bool finite = true;
+            float maxDiff = 0.0f;
+
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = out.getNumSamples() - 48000; i < out.getNumSamples(); ++i)
+                {
+                    finite = finite && std::isfinite (out.getSample (ch, i));
+                    maxDiff = std::max (maxDiff, std::abs (out.getSample (ch, i) - clean.getSample (ch, i)));
+                }
+
+            check (finite && maxDiff < 1.0e-4f,   // -80 dBFS
+                   juce::String ("one ") + name + " sample: 11 s later the output is the clean one again"
+                       + (finite ? " (" + juce::String (juce::Decibels::gainToDecibels (maxDiff, -200.0f), 1) + " dBFS)" : " (NaN)"));
+        }
+    }
+    endSection();
+}
+
 } // namespace
 
 int main()
@@ -988,6 +1050,7 @@ int main()
     testABComparator (scratch.folder);
     testFactoryPresets (scratch.folder);
     testNoAllocations();
+    testBrokenInput();
 
     std::printf ("\n%s\n", failures == 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED");
     return failures == 0 ? 0 : 1;

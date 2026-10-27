@@ -206,6 +206,17 @@ void HeftAudioProcessor::process (juce::AudioBuffer<float>& buffer, bool bypasse
 
     auto block = juce::dsp::AudioBlock<float> (buffer).getSubsetChannelBlock (0, numChannels);
 
+    // A plugin before Heft can send NaN, infinity or absurd levels. One such sample would stay
+    // in the filters' state (or overflow the loudness measurement) and spoil everything after
+    // it, so it becomes silence, and anything above +60 dBFS is capped there.
+    for (size_t ch = 0; ch < numChannels; ++ch)
+    {
+        auto* x = block.getChannelPointer (ch);
+
+        for (size_t i = 0; i < block.getNumSamples(); ++i)
+            x[i] = std::isfinite (x[i]) ? juce::jlimit (-1000.0f, 1000.0f, x[i]) : 0.0f;
+    }
+
     // If the host sends a bigger block than announced, process it in chunks so
     // we never exceed what was allocated in prepareToPlay.
     for (size_t start = 0; start < block.getNumSamples(); start += maxChunkSize)
