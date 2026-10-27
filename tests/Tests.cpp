@@ -533,6 +533,32 @@ void testProjectState()
         check (ms < 2000.0, "500 setStateInformation calls in a row are quick (" + juce::String (ms, 0) + " ms)");
     }
     endSection();
+
+    section ("Project state: a preset name can't point outside the presets folder");
+    {
+        // A shared project could carry any text as the user preset's name.
+        const auto shared = stateFromXml ("<Parameters stateVersion=\"2\">"
+                                          "<PARAM id=\"fatness\" value=\"40.0\"/><PARAM id=\"color\" value=\"50.0\"/>"
+                                          "<PARAM id=\"output\" value=\"0.0\"/><PARAM id=\"clipper\" value=\"0.0\"/>"
+                                          "<PARAM id=\"levelMatch\" value=\"0.0\"/><PARAM id=\"mix\" value=\"100.0\"/>"
+                                          "<ABState active=\"A\">"
+                                          "<SlotA presetSource=\"user\" presetName=\"..\\..\\Desktop\\x\"/>"
+                                          "<SlotB presetSource=\"user\" presetName=\"C:\\Temp\\x\"/></ABState></Parameters>");
+        HeftAudioProcessor processor;
+        processor.setStateInformation (shared.getData(), (int) shared.getSize());
+        auto& m = processor.presetManager;
+        check (m.getCurrentName() == "Untitled" && ! m.canSaveInPlace(), "a relative path is dropped: Untitled, nothing to save in place");
+        m.switchTo (PresetManager::Slot::b);
+        check (m.getCurrentName() == "Untitled" && ! m.canSaveInPlace(), "an absolute path is dropped too");
+        check (m.renameCurrent ("y").failed() && m.deleteCurrent().failed(), "so Rename and Delete have no file to touch");
+
+        const auto normal = stateFromXml ("<Parameters stateVersion=\"2\"><PARAM id=\"fatness\" value=\"40.0\"/>"
+                                          "<ABState active=\"A\"><SlotA presetSource=\"user\" presetName=\"Kick 2\"/></ABState></Parameters>");
+        HeftAudioProcessor other;
+        other.setStateInformation (normal.getData(), (int) normal.getSize());
+        check (other.presetManager.getCurrentName() == "Kick 2", "a normal name is kept");
+    }
+    endSection();
 }
 
 //==============================================================================

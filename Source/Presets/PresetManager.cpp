@@ -760,9 +760,12 @@ void PresetManager::readState (const juce::ValueTree& abState)
                 slot.values = (int) i == activeSlot ? current : readValues (tree, specs, defaults);
                 slot.preset = { sourceFromString (tree[presetSourceId].toString()), tree[presetNameId].toString() };
 
+                // A project can come from anyone, and a user preset's name becomes a file path:
+                // a name that isn't a valid file name ("..\x", "C:\x") is dropped.
                 if (slot.preset.source == Source::defaultPreset)
                     slot.preset.name = defaultName;
-                else if (slot.preset.source == Source::none || slot.preset.name.isEmpty())
+                else if (slot.preset.source == Source::none || slot.preset.name.isEmpty()
+                         || (slot.preset.source == Source::user && PresetFile::validateName (slot.preset.name).isNotEmpty()))
                     slot.preset = {};
 
                 const auto snapshot = tree.getChildWithName (snapshotType);
