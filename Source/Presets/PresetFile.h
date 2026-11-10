@@ -196,6 +196,10 @@ namespace PresetFile
             return juce::Result::fail ("Couldn't save \"" + file.getFullPathName() + "\"" + reason);
         };
 
+        // Windows refuses to replace a read-only file, but on macOS the rename below would.
+        if (file.existsAsFile() && ! file.hasWriteAccess())
+            return fail (". The file is read-only.");
+
         {
             juce::FileOutputStream out (temp);
 
