@@ -6,6 +6,12 @@ project(Heft VERSION 0.5.0 LANGUAGES C CXX)
 # DLLs and runs on any 64-bit Windows.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
+# Clang on Apple fuses a + b * c into one rounding step; MSVC doesn't. Turning that off
+# gives the Mac the same numbers as Windows (e.g. Output's default is exactly 0 dB).
+if(APPLE)
+    add_compile_options(-ffp-contract=off)
+endif()
+
 # --- JUCE, downloaded automatically and pinned to a stable release ---------
 include(FetchContent)
 FetchContent_Declare(
