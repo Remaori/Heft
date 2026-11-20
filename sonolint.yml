@@ -1,0 +1,163 @@
+# Sonolint measures how Heft sounds in every pull request (https://github.com/Remaori/Sonolint).
+# Parameters: Fatness, Color, Mix (normalized 0 to 1), Output (-24 to +12 dB), Clipper
+# and Level Match (on/off). The rules repeat what HeftMeasure checks; everything else
+# is compared with the baseline.
+version: 1
+
+plugin:
+  path: build/Heft_artefacts/Release/VST3/Heft.vst3
+
+defaults:
+  sample_rate: 48000
+  block_size: 512
+  channels: 2
+
+scenarios:
+  # Fatness 0 must be transparent.
+  - id: transparent-100
+    description: Fatness 0 leaves a low sine alone
+    params: { Fatness: 0.0 }
+    signal: { type: sine, freq_hz: 100, level_dbfs: -6 }
+    metrics: [level, harmonics]
+    expect:
+      level.gain_db: { approx: 0.0, tol: 0.1 }
+      harmonics.thdn_db: { max: -80 }
+
+  - id: transparent-1k
+    description: Fatness 0 leaves a sine alone
+    params: { Fatness: 0.0 }
+    signal: { type: sine, freq_hz: 1000, level_dbfs: -6 }
+    metrics: [level, harmonics]
+    expect:
+      level.gain_db: { approx: 0.0, tol: 0.1 }
+      harmonics.thdn_db: { max: -80 }
+
+  - id: transparent-10k
+    description: Fatness 0 leaves a high sine alone
+    params: { Fatness: 0.0 }
+    signal: { type: sine, freq_hz: 10000, level_dbfs: -6 }
+    metrics: [level, harmonics]
+    expect:
+      level.gain_db: { approx: 0.0, tol: 0.1 }
+      harmonics.thdn_db: { max: -80 }
+
+  - id: transparent-response
+    description: Fatness 0 keeps the response flat, apart from the DC blocker's gentle roll-off below 40 Hz
+    params: { Fatness: 0.0 }
+    signal: { type: stepped_sine, level_dbfs: -24, points: third_octave }
+    metrics: [frequency_response]
+
+  # Mix: dry and wet must be aligned, and Mix 0 must give the dry signal back.
+  - id: mix-50-aligned
+    description: At Fatness 0, Mix 50 % stays flat, so the dry and wet paths are aligned
+    params: { Fatness: 0.0, Mix: 0.5 }
+    signal: { type: stepped_sine, level_dbfs: -24, points: third_octave }
+    metrics: [frequency_response]
+
+  - id: mix-0-clean
+    description: Mix 0 gives the clean input back, even at Fatness 100 %
+    params: { Fatness: 1.0, Color: 1.0, Mix: 0.0 }
+    signal: { type: sine, freq_hz: 1000, level_dbfs: -6 }
+    metrics: [level, harmonics]
+    expect:
+      level.gain_db: { approx: 0.0, tol: 0.05 }
+      harmonics.thdn_db: { max: -80 }
+
+  # The character: how much it saturates and with which harmonics.
+  - id: fat25-1k
+    params: { Fatness: 0.25 }
+    signal: { type: sine, freq_hz: 1000, level_dbfs: -6 }
+    metrics: [level, harmonics]
+
+  - id: fat50-1k
+    params: { Fatness: 0.5 }
+    signal: { type: sine, freq_hz: 1000, level_dbfs: -6 }
+    metrics: [level, harmonics]
+
+  - id: fat100-1k
+    params: { Fatness: 1.0 }
+    signal: { type: sine, freq_hz: 1000, level_dbfs: -6 }
+    metrics: [level, harmonics]
+
+  - id: fat80-dark
+    params: { Fatness: 0.8, Color: 0.0 }
+    signal: { type: sine, freq_hz: 1000, level_dbfs: -6 }
+    metrics: [level, harmonics]
+
+  - id: fat100-hf
+    description: Saturation of a high sine folds back as aliasing
+    params: { Fatness: 1.0, Color: 1.0 }
+    signal: { type: sine, freq_hz: 9973, level_dbfs: -6 }
+    metrics: [harmonics, aliasing, true_peak]
+
+  - id: fat50-response
+    params: { Fatness: 0.5 }
+    signal: { type: stepped_sine, level_dbfs: -24, points: third_octave }
+    metrics: [frequency_response]
+    matrix:
+      sample_rate: [44100, 96000]
+
+  # The clipper.
+  - id: clipper-below-knee
+    description: Below its knee the clipper changes nothing
+    params: { Fatness: 0.0, Clipper: 1.0 }
+    signal: { type: sine, freq_hz: 1000, level_dbfs: -10.5 }
+    metrics: [level, harmonics]
+    expect:
+      level.gain_db: { approx: 0.0, tol: 0.1 }
+      harmonics.thdn_db: { max: -80 }
+
+  - id: clipper-peaks
+    description: With the clipper on, sample peaks never pass 0 dBFS
+    params: { Fatness: 0.5, Clipper: 1.0, Output: { text: "12 dB" } }
+    signal: { type: sine, freq_hz: 200, level_dbfs: -0.9 }
+    metrics: [true_peak]
+    expect:
+      true_peak.sample_peak_dbfs: { max: 0.0 }
+      true_peak.true_peak_dbtp: { max: 0.5 }
+
+  - id: clipper-intersample
+    description: The classic inter-sample peak, 12 kHz at 45 degrees
+    params: { Fatness: 0.5, Clipper: 1.0, Output: { text: "12 dB" } }
+    signal: { type: sine, freq_hz: 12000, level_dbfs: -0.9, phase_deg: 45 }
+    metrics: [true_peak]
+    expect:
+      true_peak.sample_peak_dbfs: { max: 0.0 }
+      true_peak.true_peak_dbtp: { max: 0.5 }
+
+  # Level Match follows loudness, not RMS: its numbers are only compared with the baseline.
+  - id: level-match
+    params: { Fatness: 1.0, Color: 1.0, Level Match: 1.0 }
+    signal: { type: pink_noise, level_dbfs: -18, duration_s: 3 }
+    metrics: [level]
+
+  # Robustness. Latency is measured on noise: Heft's fractional-delay filter moves the
+  # peak of its impulse response one sample early (docs/adr/0023).
+  - id: robustness
+    params: { Fatness: 0.7 }
+    signal: { type: pink_noise, level_dbfs: -18, duration_s: 3 }
+    metrics: [latency, determinism, block_invariance, cpu]
+    matrix:
+      block_size: [64, 512]
+
+  - id: quiet
+    description: Silence in, silence out
+    params: { Fatness: 1.0 }
+    signal: { type: silence, duration_s: 1 }
+    metrics: [silence]
+    expect:
+      silence.noise_floor_dbfs: { max: -120 }
+
+  - id: mono
+    params: { Fatness: 0.5 }
+    channels: 1
+    signal: { type: sine, freq_hz: 1000, level_dbfs: -6 }
+    metrics: [level, harmonics]
+
+  - id: offline
+    description: Rendering offline doesn't change the sound
+    params: { Fatness: 0.5 }
+    signal: { type: sine, freq_hz: 1000, level_dbfs: -6 }
+    metrics: [harmonics]
+    matrix:
+      non_realtime: [false, true]
