@@ -32,7 +32,7 @@ namespace tuning
                                                             // (what makes it "sound louder")
 
     // --- 4. Oversampling ----------------------------------------------------
-    inline constexpr int   oversamplingFactorLog2 = 2;      // 2^2 = 4x
+    inline constexpr int   oversamplingFactorLog2 = 1;      // 2^1 = 2x
 
     // --- 6. DC blocker ------------------------------------------------------
     inline constexpr float dcBlockerHz           = 5.0f;
