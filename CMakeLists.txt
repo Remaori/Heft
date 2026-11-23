@@ -31,6 +31,7 @@ juce_add_plugin(Heft
     PLUGIN_CODE                 Hft1
     FORMATS                     VST3
     PRODUCT_NAME                "Heft"
+    BUNDLE_ID                   com.Remaori.Heft
     IS_SYNTH                    FALSE
     NEEDS_MIDI_INPUT            FALSE
     NEEDS_MIDI_OUTPUT           FALSE
