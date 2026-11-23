@@ -1,5 +1,12 @@
 cmake_minimum_required(VERSION 3.22)
 
+# Apple Silicon and Intel in one binary, for macOS 12 or later. Before project(), and not in
+# the cache: there, an existing build folder would keep its old values without a word.
+if(CMAKE_HOST_APPLE)
+    set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64")
+    set(CMAKE_OSX_DEPLOYMENT_TARGET 12.0)
+endif()
+
 project(Heft VERSION 0.5.0 LANGUAGES C CXX)
 
 # Link the C++ runtime statically: the .vst3 does not depend on the Visual C++
