@@ -1,0 +1,48 @@
+# Compares a branch's sound with main's on Windows: main's HeftMeasure renders main's
+# Heft.vst3, and the branch's must match it (HeftMeasure's null test). Run it by hand:
+# Actions > Null test > Run workflow.
+name: Null test
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch to compare with main
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  null-test:
+    name: Null test (Windows x64)
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          path: before
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.branch }}
+          path: after
+
+      # -Measure builds HeftMeasure. Both renders use main's, so only the plugin differs.
+      - name: Build main
+        shell: powershell
+        run: ./before/build.ps1 -Measure -SkipValidation -InstallDir "$env:RUNNER_TEMP\before"
+
+      - name: Build the branch
+        shell: powershell
+        run: ./after/build.ps1 -SkipValidation -InstallDir "$env:RUNNER_TEMP\after"
+
+      - name: Render main
+        shell: powershell
+        run: before/build/HeftMeasure_artefacts/Release/HeftMeasure.exe "$env:RUNNER_TEMP\before\Heft.vst3" --null-render renders
+
+      - name: Compare the branch with main
+        shell: powershell
+        run: before/build/HeftMeasure_artefacts/Release/HeftMeasure.exe "$env:RUNNER_TEMP\after\Heft.vst3" --null-compare renders
