@@ -47,6 +47,7 @@ buildDir="$root/build"
 pluginBuilt="$buildDir/Heft_artefacts/Release/VST3/Heft.vst3"
 measureExe="$buildDir/HeftMeasure_artefacts/Release/HeftMeasure"
 testsExe="$buildDir/HeftTests_artefacts/Release/HeftTests"
+minMacOS=12.0   # CMAKE_OSX_DEPLOYMENT_TARGET in CMakeLists.txt
 pluginvalDir="$root/tools/pluginval"
 pluginvalExe="$pluginvalDir/pluginval.app/Contents/MacOS/pluginval"
 pluginvalUrl="https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_macOS.zip"
@@ -65,6 +66,17 @@ getPluginval() {
 
 # Xcode prints every command it runs; -quiet keeps only warnings and errors.
 build() { cmake --build "$1" --config Release --target "$2" -- -quiet; }
+
+# What people install: both architectures, the minimum macOS and a valid signature.
+checkBundle() {
+    local binary="$1/Contents/MacOS/Heft" arch
+    for arch in arm64 x86_64; do
+        lipo "$binary" -verify_arch "$arch" || fail "$1 has no $arch code."
+        [ "$(vtool -arch "$arch" -show-build "$binary" | awk '$1 == "minos" { print $2 }')" = "$minMacOS" ] \
+            || fail "The $arch code in $1 isn't built for macOS $minMacOS."
+    done
+    codesign --verify --deep --strict "$1" || fail "$1 doesn't have a valid signature."
+}
 
 # --- Optional: JUCE's AudioPluginHost, to test Heft in a second host -------------
 # Uses the JUCE source the normal build already downloaded (no second download) and
@@ -109,6 +121,7 @@ cmake -S "$root" -B "$buildDir" -G Xcode || fail 'CMake configuration failed.'
 step 'Building in Release'
 build "$buildDir" Heft_VST3 || fail 'Build failed. Check the errors above.'
 [ -d "$pluginBuilt" ] || fail "Built plugin not found at $pluginBuilt"
+checkBundle "$pluginBuilt"
 
 # --- 3. Validate ---------------------------------------------------------------
 if [ "$skipValidation" = 0 ]; then
@@ -138,6 +151,7 @@ dest="$installDir/Heft.vst3"
 # running it safely until it restarts.
 rm -rf "$dest"
 cp -R "$pluginBuilt" "$dest"
+checkBundle "$dest"
 
 printf '\n\033[32mDone in %s s. Plugin installed at:\033[0m\n  %s\n' "$SECONDS" "$dest"
 echo 'If REAPER is open, quit and reopen it to load this build. If Heft is new to it:'
