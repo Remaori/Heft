@@ -100,10 +100,10 @@ if [ "$clean" = 1 ] && [ -d "$buildDir" ]; then
     rm -rf "$buildDir"
 fi
 
-if [ ! -f "$buildDir/CMakeCache.txt" ]; then
-    step 'Configuring the project (the first time it downloads JUCE, takes a few minutes)'
-    cmake -S "$root" -B "$buildDir" -G Xcode || fail 'CMake configuration failed.'
-fi
+# Every time: after a change in CMakeLists.txt, Xcode would build once more with the old
+# settings if the project were only regenerated during the build.
+step 'Configuring the project (the first time it downloads JUCE, takes a few minutes)'
+cmake -S "$root" -B "$buildDir" -G Xcode || fail 'CMake configuration failed.'
 
 # --- 2. Build ------------------------------------------------------------------
 step 'Building in Release'
