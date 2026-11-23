@@ -134,13 +134,20 @@ if [ "$skipValidation" = 0 ]; then
 fi
 
 if [ "$measure" = 1 ]; then
-    step 'Measuring the sound (HeftMeasure)'
     build "$buildDir" HeftMeasure || fail 'Building HeftMeasure failed.'
-    "$measureExe" "$pluginBuilt" || fail 'Some measurements failed. The plugin was NOT installed.'
-
-    step 'Running the unit tests (HeftTests)'
     build "$buildDir" HeftTests || fail 'Building HeftTests failed.'
-    "$testsExe" || fail 'Some unit tests failed. The plugin was NOT installed.'
+
+    # On Apple Silicon, the Intel code too (it needs Rosetta).
+    archs="$(uname -m)"
+    if [ "$archs" = arm64 ]; then archs='arm64 x86_64'; fi
+
+    for arch in $archs; do
+        step "Measuring the sound (HeftMeasure, $arch)"
+        arch "-$arch" "$measureExe" "$pluginBuilt" || fail "Some measurements failed ($arch). The plugin was NOT installed."
+
+        step "Running the unit tests (HeftTests, $arch)"
+        arch "-$arch" "$testsExe" || fail "Some unit tests failed ($arch). The plugin was NOT installed."
+    done
 fi
 
 # --- 4. Install ----------------------------------------------------------------
