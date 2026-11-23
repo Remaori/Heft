@@ -113,12 +113,13 @@ void testPresetFile (HeftAudioProcessor& processor, const juce::File& scratch)
         const auto* previous = std::setlocale (LC_ALL, nullptr);
         const juce::String saved (previous != nullptr ? previous : "C");
 
-        if (std::setlocale (LC_ALL, "es-ES") != nullptr)
-        {
-            check (formatValue (specs[0], 62.5f) == "62.5", "decimal point even with a comma locale");
-            Values parsed {};
-            check (fromXml (toXml (v, specs, "0.4.0"), specs, parsed).wasOk() && parsed == v, "round trip with a comma locale");
-        }
+        if (std::setlocale (LC_ALL, "es-ES") == nullptr)   // the name on Windows
+            std::setlocale (LC_ALL, "es_ES");              // and on macOS
+
+        check (std::localeconv()->decimal_point[0] == ',', "a locale with a decimal comma to test with");
+        check (formatValue (specs[0], 62.5f) == "62.5", "decimal point even with a comma locale");
+        Values parsed {};
+        check (fromXml (toXml (v, specs, "0.4.0"), specs, parsed).wasOk() && parsed == v, "round trip with a comma locale");
 
         std::setlocale (LC_ALL, saved.toRawUTF8());
     }
