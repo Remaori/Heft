@@ -1,5 +1,8 @@
 # Builds Heft on every push to main and on pull requests, validates it with
 # pluginval (strictness 10), runs HeftMeasure and uploads Heft.vst3 as an artifact.
+# Sonolint then measures how it sounds against sonolint/baseline.json and comments on
+# the pull request, also when pluginval or HeftMeasure failed. Running this workflow by
+# hand makes a new baseline instead.
 # Pushing a version tag (e.g. v0.4.2) also creates a *draft* GitHub Release with the zipped
 # plugin. Nobody sees a draft until it's published by hand on GitHub, after downloading
 # its zip and testing it (docs/RELEASING.md).
@@ -21,6 +24,8 @@ jobs:
     name: Windows x64
     runs-on: windows-latest
     timeout-minutes: 60
+    outputs:
+      vst3_built: ${{ steps.upload.outcome == 'success' }}
 
     steps:
       - uses: actions/checkout@v7
@@ -29,7 +34,11 @@ jobs:
         shell: powershell
         run: ./build.ps1 -Measure -InstallDir "$env:RUNNER_TEMP\VST3"
 
+      # Also when pluginval or HeftMeasure failed, so Sonolint can still report; not
+      # when Heft didn't build.
       - name: Upload Heft.vst3
+        id: upload
+        if: ${{ !cancelled() && hashFiles('build/Heft_artefacts/Release/VST3/Heft.vst3/**') != '' }}
         uses: actions/upload-artifact@v7
         with:
           name: Heft-VST3-Windows-x64
@@ -38,6 +47,49 @@ jobs:
             !build/Heft_artefacts/Release/VST3/*.lib
             !build/Heft_artefacts/Release/VST3/*.exp
           if-no-files-found: error
+
+  sonolint:
+    name: Sonolint
+    needs: windows
+    if: ${{ !cancelled() && needs.windows.outputs.vst3_built == 'true' && (github.event_name == 'pull_request' || github.event_name == 'push' && github.ref == 'refs/heads/main') }}
+    runs-on: windows-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: Heft-VST3-Windows-x64
+          path: build/vst3
+
+      - uses: Remaori/Sonolint@v0.1.0-rc.1
+        with:
+          plugin: build/vst3/Heft.vst3
+
+  # Run by hand (Actions > Build > Run workflow) after an intended change of sound: the
+  # new baseline is baseline.json in the artifact of the run, to download and commit as
+  # sonolint/baseline.json. Same runner as the comparison above.
+  sonolint-baseline:
+    name: Sonolint baseline
+    needs: windows
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: Heft-VST3-Windows-x64
+          path: build/vst3
+
+      - uses: Remaori/Sonolint@v0.1.0-rc.1
+        with:
+          plugin: build/vst3/Heft.vst3
+          mode: baseline
 
   release:
     name: Draft release
