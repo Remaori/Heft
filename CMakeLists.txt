@@ -6,8 +6,9 @@ project(Heft VERSION 0.5.0 LANGUAGES C CXX)
 # DLLs and runs on any 64-bit Windows.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
-# Clang on Apple fuses a + b * c into one rounding step; MSVC doesn't. Turning that off
-# gives the Mac the same numbers as Windows (e.g. Output's default is exactly 0 dB).
+# Clang on Apple Silicon fuses a + b * c into one rounding step, which made Output's default
+# 3.6e-7 dB instead of exactly 0. Turning that off removes one difference with MSVC's build,
+# not all of them: it doesn't promise the same output as on Windows.
 if(APPLE)
     add_compile_options(-ffp-contract=off)
 endif()
