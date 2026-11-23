@@ -6,6 +6,13 @@ project(Heft VERSION 0.5.0 LANGUAGES C CXX)
 # DLLs and runs on any 64-bit Windows.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
+# Clang on Apple Silicon fuses a + b * c into one rounding step, which made Output's default
+# 3.6e-7 dB instead of exactly 0. Turning that off removes one difference with MSVC's build,
+# not all of them: it doesn't promise the same output as on Windows.
+if(APPLE)
+    add_compile_options(-ffp-contract=off)
+endif()
+
 # --- JUCE, downloaded automatically and pinned to a stable release ---------
 include(FetchContent)
 FetchContent_Declare(
@@ -24,6 +31,7 @@ juce_add_plugin(Heft
     PLUGIN_CODE                 Hft1
     FORMATS                     VST3
     PRODUCT_NAME                "Heft"
+    BUNDLE_ID                   com.Remaori.Heft
     IS_SYNTH                    FALSE
     NEEDS_MIDI_INPUT            FALSE
     NEEDS_MIDI_OUTPUT           FALSE

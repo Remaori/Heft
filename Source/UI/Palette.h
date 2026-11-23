@@ -24,10 +24,16 @@ namespace palette
     inline const juce::Colour meterMid     { 0xffffc547 };
     inline const juce::Colour meterHigh    { 0xffff4d3d };
 
-    // Segoe UI ships with every Windows 10/11 install.
+    // Segoe UI ships with every Windows 10/11 install. Avenir Next ships with every macOS,
+    // and of the Mac's fonts its sizes come closest to Segoe UI's.
     inline juce::Font font (float height, bool bold = false)
     {
-        return juce::Font (juce::FontOptions ("Segoe UI", height, bold ? juce::Font::bold : juce::Font::plain));
+       #if JUCE_MAC
+        const auto* name = "Avenir Next";
+       #else
+        const auto* name = "Segoe UI";
+       #endif
+        return juce::Font (juce::FontOptions (name, height, bold ? juce::Font::bold : juce::Font::plain));
     }
 
     // Small uppercase captions with extra letter spacing.
