@@ -48,6 +48,32 @@ jobs:
             !build/Heft_artefacts/Release/VST3/*.exp
           if-no-files-found: error
 
+  macos:
+    name: macOS universal
+    runs-on: macos-26   # fixed: with macos-latest, a new Xcode would arrive unannounced
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check that Rosetta is there, to test the Intel code
+        run: arch -x86_64 /usr/bin/true
+
+      - name: Build, validate and measure
+        run: ./build.sh --measure --install-dir "$RUNNER_TEMP/VST3"
+
+      # Zipped here with ditto: uploaded loose, the bundle could lose permissions and its
+      # signature with them.
+      - name: Zip Heft.vst3
+        run: ditto -c -k --keepParent "$RUNNER_TEMP/VST3/Heft.vst3" Heft-macOS-Universal.zip
+
+      - name: Upload Heft.vst3
+        uses: actions/upload-artifact@v7
+        with:
+          name: Heft-macOS-Universal
+          path: Heft-macOS-Universal.zip
+          if-no-files-found: error
+
   sonolint:
     name: Sonolint
     needs: windows
