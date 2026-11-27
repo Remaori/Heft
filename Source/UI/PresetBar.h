@@ -124,6 +124,7 @@ private:
         const auto current = manager.getCurrent();
 
         juce::PopupMenu menu;
+        menu.setLookAndFeel (&getLookAndFeel());   // without it JUCE draws the menu in its default style
         menu.addSectionHeader ("Factory");
 
         for (int i = 0; i < (int) entries.size(); ++i)
@@ -160,6 +161,7 @@ private:
         const juce::String ellipsis (juce::CharPointer_UTF8 ("\xe2\x80\xa6"));
 
         juce::PopupMenu menu;
+        menu.setLookAndFeel (&getLookAndFeel());
         menu.addItem (1, "Save as" + ellipsis, folderOk);
         menu.addItem (2, "Rename" + ellipsis, isUser);
         menu.addItem (3, "Delete" + ellipsis, isUser);
