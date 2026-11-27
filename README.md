@@ -46,9 +46,6 @@ dry signal → output gain → soft clipper (4x oversampled) → safety clip.
 
 - **Meters**: input and output peak levels (IN / OUT) and the compressor's gain
   reduction (GR) with a numeric readout.
-- **Saturation curve**: the transfer curve of the saturator for the current Fatness
-  and Color. It shows the shape only (scaled to fit), so you can see how hard it bends
-  and how asymmetric it is.
 - **Level Match readout**: with Level Match on, the switch shows the correction being applied.
 - **Knobs**: double-click (or Alt+click) to reset, click the value to type an exact number.
   Hover any control for a tooltip.
@@ -65,7 +62,7 @@ FL Studio, Bitwig, Cubase, Studio One or any other VST3 host.
 | Control | What it does |
 |---|---|
 | **◀ / ▶** | Previous / next preset (factory, then yours), wrapping around at the ends. |
-| **Name** | Click for the list: *Factory* presets, then *User* presets. An amber **\*** means the knobs no longer match the preset; move them back and it goes away. |
+| **Name** | Click for the list: *Factory* presets, then *User* presets. A **\*** after the name means the knobs no longer match the preset; move them back and it goes away. |
 | **Save** | Saves your changes into the current user preset. On a factory preset, *Default* or *Untitled*, it asks for a name instead. |
 | **⋯** | *Save as…*, *Rename…*, *Delete…* (to the Recycle Bin), *Import…* and *Open presets folder*. Rename and Delete only work on your own presets. |
 
@@ -279,7 +276,6 @@ Source/
   UI/HeftLookAndFeel.h    How knobs, switches, buttons, menus and dialogs are drawn
   UI/PresetBar.h          The preset bar and A/B in the header (asks the PresetManager, shows dialogs)
   UI/Meters.h             IN / OUT level meters and the GR meter
-  UI/CurveDisplay.h       Saturation curve display
   DSP/Compressor.h        1. Linked compressor, peak detector, soft knee, makeup
   DSP/TiltFilter.h        2 and 5. Pre-emphasis tilt EQ and its exact inverse
   DSP/Saturator.h         3. Asymmetric tanh (even harmonics)
@@ -291,6 +287,7 @@ Source/
   Presets/PresetFile.h    Reading/writing .heftpreset files and validating names
   Presets/PresetManager.* Preset list, load/save/rename/delete/import, A/B, project state
 Presets/Factory/          Factory presets (.heftpreset), compiled into the plugin
+Fonts/                    Inter, the UI font, compiled into the plugin (licence: Fonts/OFL.txt)
 tests/Measure.cpp         HeftMeasure: loads the VST3 and measures it (build.ps1 -Measure)
 tests/Tests.cpp           HeftTests: unit tests for presets, A/B and project state (build.ps1 -Measure)
 .github/workflows/        GitHub Actions: build + pluginval + HeftMeasure + HeftTests; releases on v* tags
@@ -403,7 +400,7 @@ the GNU Affero General Public License, version 3. See [LICENSE](LICENSE).
 
 It is built with [JUCE](https://juce.com), which is used under its AGPLv3 license.
 The plugin binary also contains third-party code (the VST 3 SDK and the image and
-text libraries bundled with JUCE). Their licenses are reproduced in
+text libraries bundled with JUCE) and the Inter font. Their licenses are reproduced in
 [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt), which ships inside every release zip.
 This software is based in part on the work of the Independent JPEG Group.
 
