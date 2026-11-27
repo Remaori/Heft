@@ -35,10 +35,6 @@ HeftAudioProcessorEditor::HeftAudioProcessorEditor (HeftAudioProcessor& p)
                "100 % is fully processed.");
     setupKnob (outputKnob, outputLabel, "Output", ParamIDs::output, "Final output level, after the mix.");
 
-    fatnessKnob.getProperties().set ("arc", "fatness");
-    colorKnob.getProperties().set ("arc", "color");
-    mixKnob.getProperties().set ("arc", "mix");
-    outputKnob.getProperties().set ("arc", "neutral");
     outputKnob.getProperties().set ("bipolarFrom", 0.0);
 
     clipperButton.setTooltip ("Soft clipper at the very end, oversampled 4x: sample peaks never go above 0 dBFS "
@@ -49,23 +45,20 @@ HeftAudioProcessorEditor::HeftAudioProcessorEditor (HeftAudioProcessor& p)
     addAndMakeVisible (levelMatchButton);
 
     levelMatchReadout.setJustificationType (juce::Justification::centredRight);
-    levelMatchReadout.setColour (juce::Label::textColourId, palette::accent);
+    levelMatchReadout.setColour (juce::Label::textColourId, palette::textDim);
     levelMatchReadout.setInterceptsMouseClicks (false, false);
     addAndMakeVisible (levelMatchReadout);
 
-    curve.setTooltip ("Saturation curve for the current Fatness and Color (shape only).");
     inputMeter.setTooltip ("Input level (peak).");
     gainReductionMeter.setTooltip ("Gain reduction applied by the compressor.");
     outputMeter.setTooltip ("Output level (peak).");
 
-    for (auto* component : { static_cast<juce::Component*> (&curve), static_cast<juce::Component*> (&inputMeter),
-                             static_cast<juce::Component*> (&gainReductionMeter), static_cast<juce::Component*> (&outputMeter) })
+    for (auto* component : { static_cast<juce::Component*> (&inputMeter), static_cast<juce::Component*> (&gainReductionMeter),
+                             static_cast<juce::Component*> (&outputMeter) })
         addAndMakeVisible (component);
 
     addAndMakeVisible (presetBar);
 
-    fatnessParam    = p.apvts.getRawParameterValue (ParamIDs::fatness);
-    colorParam      = p.apvts.getRawParameterValue (ParamIDs::color);
     levelMatchParam = p.apvts.getRawParameterValue (ParamIDs::levelMatch);
 
     // Resizable with a fixed aspect ratio; the last size is saved with the project.
@@ -129,28 +122,22 @@ void HeftAudioProcessorEditor::paint (juce::Graphics& g)
     const auto scale = (float) getWidth() / (float) baseWidth;
     const auto headerHeight = 56.0f * scale;
 
-    g.setGradientFill (juce::ColourGradient (palette::background, 0.0f, 0.0f,
-                                             palette::backgroundLo, 0.0f, (float) getHeight(), false));
-    g.fillAll();
+    g.fillAll (palette::background);
 
-    // Header: wordmark, subtitle and version. The preset bar fills the space between.
+    // Header: wordmark and version. The preset bar fills the space between.
     const auto header = getHeader();
 
     g.setColour (palette::text);
     g.setFont (header.wordmark);
     g.drawText ("HEFT", header.area, juce::Justification::centredLeft, false);
 
-    g.setColour (palette::accent);
-    g.setFont (header.subtitle);
-    g.drawText ("FATTENER", header.area.withLeft (header.subtitleX).translated (0.0f, 2.0f * scale),
-                juce::Justification::centredLeft, false);
-
     g.setColour (palette::textDim);
     g.setFont (header.version);
     g.drawText ("v" JucePlugin_VersionString, header.area, juce::Justification::centredRight, false);
 
-    g.setColour (palette::panelEdge);
+    g.setColour (palette::divider);
     g.fillRect (0.0f, headerHeight - 1.0f, (float) getWidth(), 1.0f);
+    g.fillRect (columnLine);
 }
 
 HeftAudioProcessorEditor::Header HeftAudioProcessorEditor::getHeader() const
@@ -158,13 +145,11 @@ HeftAudioProcessorEditor::Header HeftAudioProcessorEditor::getHeader() const
     const auto scale = (float) getWidth() / (float) baseWidth;
 
     Header header;
-    header.area     = getLocalBounds().toFloat().removeFromTop (56.0f * scale).reduced (22.0f * scale, 0.0f);
-    header.wordmark = palette::font (28.0f * scale, true).withExtraKerningFactor (0.16f);
-    header.subtitle = palette::caption (11.0f * scale);
-    header.version  = palette::font (12.0f * scale);
+    header.area     = getLocalBounds().toFloat().removeFromTop (56.0f * scale).reduced (20.0f * scale, 0.0f);
+    header.wordmark = palette::font (24.0f * scale, true).withExtraKerningFactor (0.32f);
+    header.version  = palette::font (13.0f * scale);
 
-    header.subtitleX = header.area.getX() + juce::GlyphArrangement::getStringWidth (header.wordmark, "HEFT") + 10.0f * scale;
-    header.freeLeft  = header.subtitleX + juce::GlyphArrangement::getStringWidth (header.subtitle, "FATTENER");
+    header.freeLeft  = header.area.getX() + juce::GlyphArrangement::getStringWidth (header.wordmark, "HEFT") + 10.0f * scale;
     header.freeRight = header.area.getRight() - juce::GlyphArrangement::getStringWidth (header.version, "v" JucePlugin_VersionString);
     return header;
 }
@@ -186,34 +171,37 @@ void HeftAudioProcessorEditor::resized()
         presetBar.setBounds (juce::Rectangle<float> (x, header.area.getCentreY() - height * 0.5f, width, height).toNearestInt());
     }
 
-    auto content = getLocalBounds().withTrimmedTop (px (56.0f)).reduced (px (22.0f), px (18.0f));
+    auto content = getLocalBounds().withTrimmedTop (px (56.0f)).reduced (px (24.0f), px (18.0f));
 
-    // Right: IN, GR and OUT meters.
-    auto meterArea = content.removeFromRight (px (144.0f));
-    const auto meterWidth = meterArea.getWidth() / 3;
-    inputMeter.setBounds (meterArea.removeFromLeft (meterWidth).reduced (px (4.0f), 0));
-    gainReductionMeter.setBounds (meterArea.removeFromLeft (meterWidth).reduced (px (4.0f), 0));
-    outputMeter.setBounds (meterArea.reduced (px (4.0f), 0));
-    content.removeFromRight (px (18.0f));
+    // Right column, after a thin line: the two switches on top, the meters at the bottom.
+    auto right = content.removeFromRight (px (214.0f));
+    columnLine = right.removeFromLeft (px (22.0f)).withWidth (1);
+    content.removeFromRight (px (24.0f));
 
-    // Left: saturation curve and the two switches.
-    auto left = content.removeFromLeft (px (214.0f));
-    auto switches = left.removeFromBottom (px (86.0f));
-    curve.setBounds (left.withTrimmedBottom (px (14.0f)));
-    clipperButton.setBounds (switches.removeFromTop (px (38.0f)));
-    switches.removeFromTop (px (10.0f));
-    levelMatchButton.setBounds (switches.removeFromTop (px (38.0f)));
-    levelMatchReadout.setBounds (levelMatchButton.getBounds().reduced (px (14.0f), px (8.0f)).removeFromRight (px (80.0f)));
-    levelMatchReadout.setFont (palette::font (13.0f * scale, true));
-    content.removeFromLeft (px (18.0f));
+    clipperButton.setBounds (right.removeFromTop (px (36.0f)));
+    right.removeFromTop (px (8.0f));
+    levelMatchButton.setBounds (right.removeFromTop (px (36.0f)));
+    levelMatchReadout.setBounds (levelMatchButton.getBounds().reduced (px (8.0f), px (6.0f)).removeFromRight (px (70.0f)));
+    levelMatchReadout.setFont (palette::font (14.0f * scale));
 
-    // Centre: the big Fatness knob; to its right, Color, Mix and Output.
-    auto smallKnobs = content.removeFromRight (px (118.0f));
-    const auto smallHeight = smallKnobs.getHeight() / 3;
-    layoutKnob (colorKnob, colorLabel, smallKnobs.removeFromTop (smallHeight), scale, false);
-    layoutKnob (mixKnob, mixLabel, smallKnobs.removeFromTop (smallHeight), scale, false);
-    layoutKnob (outputKnob, outputLabel, smallKnobs, scale, false);
-    layoutKnob (fatnessKnob, fatnessLabel, content, scale, true);
+    outputMeter.setBounds (right.removeFromBottom (px (LevelMeter::preferredHeight)));
+    right.removeFromBottom (px (16.0f));
+    gainReductionMeter.setBounds (right.removeFromBottom (px (GainReductionMeter::preferredHeight)));
+    right.removeFromBottom (px (16.0f));
+    inputMeter.setBounds (right.removeFromBottom (px (LevelMeter::preferredHeight)));
+
+    // Left: the big Fatness knob on top, then Color, Mix and Output in a row at the bottom.
+    auto row = content.removeFromBottom (px (100.0f));
+    const auto smallWidth = px (84.0f), smallGap = px (32.0f);
+    row = row.withSizeKeepingCentre (smallWidth * 3 + smallGap * 2, row.getHeight());
+    layoutKnob (colorKnob, colorLabel, row.removeFromLeft (smallWidth), scale, false);
+    row.removeFromLeft (smallGap);
+    layoutKnob (mixKnob, mixLabel, row.removeFromLeft (smallWidth), scale, false);
+    row.removeFromLeft (smallGap);
+    layoutKnob (outputKnob, outputLabel, row, scale, false);
+
+    const auto top = content.removeFromTop (px (200.0f));
+    layoutKnob (fatnessKnob, fatnessLabel, top.withSizeKeepingCentre (px (170.0f), top.getHeight()), scale, true);
 }
 
 void HeftAudioProcessorEditor::layoutKnob (juce::Slider& knob, juce::Label& label, juce::Rectangle<int> area,
@@ -221,19 +209,18 @@ void HeftAudioProcessorEditor::layoutKnob (juce::Slider& knob, juce::Label& labe
 {
     const auto px = [scale] (float value) { return juce::roundToInt (value * scale); };
 
-    const auto labelHeight = px (large ? 22.0f : 18.0f);
-    const auto gap         = px (large ? 6.0f : 2.0f);
-    const auto boxHeight   = px (large ? 30.0f : 22.0f);
-    const auto spacing     = px (large ? 0.0f : 10.0f);   // breathing room between stacked knobs
-    const auto diameter    = juce::jmin (area.getWidth(), area.getHeight() - labelHeight - gap - boxHeight - spacing);
+    const auto labelHeight = px (large ? 18.0f : 14.0f);
+    const auto gap         = px (large ? 8.0f : 6.0f);
+    const auto boxHeight   = px (large ? 26.0f : 22.0f);
+    const auto diameter    = juce::jmin (area.getWidth(), area.getHeight() - labelHeight - gap - boxHeight);
 
     // Keep caption, knob and value together, centred in the available space.
     auto group = area.withSizeKeepingCentre (area.getWidth(), labelHeight + gap + diameter + boxHeight);
 
-    label.setFont (palette::caption ((large ? 15.0f : 12.0f) * scale));
+    label.setFont (palette::caption ((large ? 14.0f : 12.0f) * scale));
     label.setBounds (group.removeFromTop (labelHeight));
     group.removeFromTop (gap);
-    knob.setTextBoxStyle (juce::Slider::TextBoxBelow, false, px (large ? 110.0f : 84.0f), boxHeight);
+    knob.setTextBoxStyle (juce::Slider::TextBoxBelow, false, px (large ? 84.0f : 68.0f), boxHeight);
     knob.setBounds (group);
 }
 
@@ -254,7 +241,6 @@ void HeftAudioProcessorEditor::timerCallback()
     inputMeter.setLevels (inputDb);
     outputMeter.setLevels (outputDb);
     gainReductionMeter.setReduction (reductionDb);
-    curve.setShape (fatnessParam->load() * 0.01f, colorParam->load() * 0.01f);
 
     juce::String readout;
 

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "PluginProcessor.h"
-#include "UI/CurveDisplay.h"
 #include "UI/HeftLookAndFeel.h"
 #include "UI/Meters.h"
 #include "UI/PresetBar.h"
@@ -35,12 +34,12 @@ private:
     void layoutKnob (juce::Slider&, juce::Label&, juce::Rectangle<int> area, float scale, bool large);
 
     // Where the header's texts go, shared by paint() and resized() so the preset bar
-    // sits centred in the free space between "FATTENER" and the version.
+    // sits centred in the free space between "HEFT" and the version.
     struct Header
     {
         juce::Rectangle<float> area;
-        juce::Font wordmark, subtitle, version;
-        float subtitleX = 0.0f, freeLeft = 0.0f, freeRight = 0.0f;
+        juce::Font wordmark, version;
+        float freeLeft = 0.0f, freeRight = 0.0f;
     };
 
     Header getHeader() const;
@@ -58,16 +57,14 @@ private:
     juce::ToggleButton clipperButton { "Clipper" }, levelMatchButton { "Level Match" };
     juce::Label levelMatchReadout;
 
-    CurveDisplay curve;
     LevelMeter inputMeter { "IN" }, outputMeter { "OUT" };
     GainReductionMeter gainReductionMeter;
+    juce::Rectangle<int> columnLine;   // between the knobs and the switches and meters; set by resized()
 
     // Attachments come after the controls so they are destroyed before them.
     SliderAttachment fatnessAttachment, colorAttachment, mixAttachment, outputAttachment;
     ButtonAttachment clipperAttachment, levelMatchAttachment;
 
-    std::atomic<float>* fatnessParam    = nullptr;
-    std::atomic<float>* colorParam      = nullptr;
     std::atomic<float>* levelMatchParam = nullptr;
 
     // Meter ballistics (UI side).

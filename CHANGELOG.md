@@ -5,7 +5,11 @@ text of its release on GitHub, so it's written for people who use the plugin.
 
 ## Unreleased
 
-Nothing yet.
+- **New look:** black and white, with solid white knobs, Fatness on its own at the top,
+  and thin horizontal meters. The preset list and the dialogs match it. The saturation
+  curve display is gone. The sound, presets and saved projects are unchanged.
+- The interface uses the Inter font, built into the plugin, so it looks the same on
+  every computer.
 
 ## 0.5.0
 
