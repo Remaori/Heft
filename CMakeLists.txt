@@ -36,7 +36,7 @@ juce_add_plugin(Heft
     COMPANY_NAME                "Remaori"
     PLUGIN_MANUFACTURER_CODE    Rnau
     PLUGIN_CODE                 Hft1
-    FORMATS                     VST3
+    FORMATS                     VST3 AU     # JUCE leaves AU out on Windows
     PRODUCT_NAME                "Heft"
     BUNDLE_ID                   com.Remaori.Heft
     IS_SYNTH                    FALSE
@@ -113,7 +113,12 @@ endif()
 
 # --- Measurement tool (optional, not built by default) ----------------------
 #     cmake --build build --config Release --target HeftMeasure
-juce_add_console_app(HeftMeasure PRODUCT_NAME "HeftMeasure")
+# On macOS it can also load the Audio Unit (an installed one: that's how macOS finds AUs).
+if(APPLE)
+    set(HEFT_MEASURE_AU PLUGINHOST_AU TRUE)
+endif()
+
+juce_add_console_app(HeftMeasure PRODUCT_NAME "HeftMeasure" ${HEFT_MEASURE_AU})
 set_target_properties(HeftMeasure PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
 target_compile_features(HeftMeasure PRIVATE cxx_std_20)
