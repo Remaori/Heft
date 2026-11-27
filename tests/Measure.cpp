@@ -4,6 +4,8 @@
 // true peak), level match (K-weighted loudness), bypass crossfade and CPU use.
 //
 // Usage:  HeftMeasure.exe "path\to\Heft.vst3"
+//         HeftMeasure ~/Library/Audio/Plug-Ins/Components/Heft.component   (macOS; the
+//         Audio Unit must be installed there, because macOS only finds registered AUs)
 //
 // Null test (proves a change doesn't touch the sound): render fixed signals on main
 // first, then compare after the change. A pure refactor must be bit-identical, or
@@ -15,6 +17,10 @@
 #include <juce_dsp/juce_dsp.h>
 
 #include "DSP/KWeighting.h"
+
+#if JUCE_PLUGINHOST_AU && JUCE_MAC
+ #include <AudioToolbox/AudioToolbox.h>
+#endif
 
 #include <algorithm>
 #include <chrono>
@@ -89,16 +95,27 @@ public:
         return output;
     }
 
-    // The host-side bypass (the VST3 "bypass" parameter). False if the plugin has none.
+    // The host-side bypass: the VST3 "bypass" parameter, or an Audio Unit's bypass property
+    // (JUCE gives a hosted AU no bypass parameter; Logic and GarageBand use the property).
+    // False if the plugin has neither.
     bool setBypass (bool shouldBypass)
     {
-        auto* bypass = plugin->getBypassParameter();
+        if (auto* bypass = plugin->getBypassParameter())
+        {
+            bypass->setValueNotifyingHost (shouldBypass ? 1.0f : 0.0f);
+            return true;
+        }
 
-        if (bypass == nullptr)
-            return false;
+       #if JUCE_PLUGINHOST_AU && JUCE_MAC
+        if (auto* au = plugin->getAudioUnitClient())
+        {
+            const UInt32 value = shouldBypass ? 1 : 0;
+            return AudioUnitSetProperty (au->getAudioUnitHandle(), kAudioUnitProperty_BypassEffect,
+                                         kAudioUnitScope_Global, 0, &value, sizeof (value)) == noErr;
+        }
+       #endif
 
-        bypass->setValueNotifyingHost (shouldBypass ? 1.0f : 0.0f);
-        return true;
+        return false;
     }
 
     int latency() const { return plugin->getLatencySamples(); }
@@ -443,9 +460,20 @@ int main (int argc, char* argv[])
 
     juce::ScopedJuceInitialiser_GUI juceInit;
 
-    juce::VST3PluginFormat format;
+    const auto path = juce::String::fromUTF8 (argv[1]);
+    juce::VST3PluginFormat vst3Format;
+    juce::AudioPluginFormat* formatToUse = &vst3Format;
+
+   #if JUCE_PLUGINHOST_AU && JUCE_MAC
+    juce::AudioUnitPluginFormat auFormat;
+
+    if (path.endsWithIgnoreCase (".component"))
+        formatToUse = &auFormat;
+   #endif
+
+    auto& format = *formatToUse;
     juce::OwnedArray<juce::PluginDescription> types;
-    format.findAllTypesForFile (types, juce::String::fromUTF8 (argv[1]));
+    format.findAllTypesForFile (types, path);
 
     if (types.isEmpty())
     {

@@ -62,12 +62,16 @@ jobs:
       - name: Build, validate and measure
         run: ./build.sh --measure --install-dir "$RUNNER_TEMP/VST3"
 
-      # Zipped here with ditto: uploaded loose, the bundle could lose permissions and its
-      # signature with them.
-      - name: Zip Heft.vst3
-        run: ditto -c -k --keepParent "$RUNNER_TEMP/VST3/Heft.vst3" Heft-macOS-Universal.zip
+      # Zipped here with ditto: uploaded loose, the bundles could lose permissions and their
+      # signatures with them. build.sh installed the AU in the runner's Components folder.
+      - name: Zip Heft.vst3 and Heft.component
+        run: |
+          mkdir "$RUNNER_TEMP/Heft"
+          ditto "$RUNNER_TEMP/VST3/Heft.vst3" "$RUNNER_TEMP/Heft/Heft.vst3"
+          ditto "$HOME/Library/Audio/Plug-Ins/Components/Heft.component" "$RUNNER_TEMP/Heft/Heft.component"
+          ditto -c -k --keepParent "$RUNNER_TEMP/Heft" Heft-macOS-Universal.zip
 
-      - name: Upload Heft.vst3
+      - name: Upload the plugins
         uses: actions/upload-artifact@v7
         with:
           name: Heft-macOS-Universal
