@@ -4,10 +4,55 @@
 
 #include "Palette.h"
 
-// Vertical stereo peak meter, -48..+6 dBFS, with ticks at 0 / -6 / -12 / -24 dB.
+// Horizontal meters: a caption row (name on the left, a readout on the right) above thin
+// bars. Sizes are at 100 % scale; the meters scale with the height the editor gives them.
+namespace meterLayout
+{
+    constexpr float captionHeight = 12.0f, gap = 6.0f, barHeight = 5.0f;
+
+    // Draws the caption row and returns the area below it.
+    inline juce::Rectangle<float> drawCaption (juce::Graphics& g, juce::Rectangle<float> bounds, float scale,
+                                               const juce::String& name, const juce::String& readout,
+                                               juce::Colour readoutColour)
+    {
+        const auto row = bounds.removeFromTop (captionHeight * scale);
+
+        g.setColour (palette::textDim);
+        g.setFont (palette::caption (captionHeight * scale));
+        g.drawText (name, row, juce::Justification::centredLeft, false);
+
+        g.setColour (readoutColour);
+        g.setFont (palette::font (captionHeight * scale, true));
+        g.drawText (readout, row, juce::Justification::centredRight, false);
+
+        return bounds.withTrimmedTop (gap * scale);
+    }
+
+    // A bar filled from the left to `amount` (0..1), with thin ticks at the given proportions.
+    inline void drawBar (juce::Graphics& g, juce::Rectangle<float> bar, float amount, std::initializer_list<float> ticks)
+    {
+        g.setColour (palette::track);
+        g.fillRect (bar);
+
+        if (amount > 0.0f)
+        {
+            g.setColour (palette::text);
+            g.fillRect (bar.withWidth (amount * bar.getWidth()));
+        }
+
+        g.setColour (palette::background);
+
+        for (auto tick : ticks)
+            g.fillRect (bar.getX() + tick * bar.getWidth(), bar.getY(), 1.0f, bar.getHeight());
+    }
+}
+
+// Stereo peak meter, -48..+6 dBFS, with ticks at 0 / -6 / -12 / -24 dB. Left channel on top.
 class LevelMeter final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
+    static constexpr float preferredHeight = meterLayout::captionHeight + 2.0f * (meterLayout::gap + meterLayout::barHeight);
+
     explicit LevelMeter (juce::String labelText) : label (std::move (labelText)) {}
 
     void setLevels (std::array<float, 2> newLevelsDb)
@@ -21,30 +66,14 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        auto bounds = getLocalBounds().toFloat();
-        const auto labelHeight = juce::jmin (18.0f, bounds.getHeight() * 0.08f);
-
-        g.setColour (palette::textDim);
-        g.setFont (palette::caption (juce::jmin (labelHeight * 0.75f, bounds.getWidth() * 0.32f)));
-        g.drawText (label, bounds.removeFromBottom (labelHeight), juce::Justification::centred, false);
-        bounds.removeFromBottom (labelHeight * 0.4f);
-
-        const auto gap  = bounds.getWidth() * 0.12f;
-        const auto barW = (bounds.getWidth() - gap) * 0.5f;
+        const auto scale = (float) getHeight() / preferredHeight;
+        auto bars = meterLayout::drawCaption (g, getLocalBounds().toFloat(), scale, label, {}, palette::text);
 
         for (size_t ch = 0; ch < 2; ++ch)
         {
-            const auto bar = bounds.withWidth (barW).translated ((barW + gap) * (float) ch, 0.0f);
-            drawBar (g, bar, levelsDb[ch]);
-        }
-
-        // Ticks across both bars.
-        g.setColour (palette::background.withAlpha (0.8f));
-
-        for (auto db : { 0.0f, -6.0f, -12.0f, -24.0f })
-        {
-            const auto y = bounds.getBottom() - proportion (db) * bounds.getHeight();
-            g.fillRect (bounds.getX(), y, bounds.getWidth(), 1.0f);
+            meterLayout::drawBar (g, bars.removeFromTop (meterLayout::barHeight * scale), proportion (levelsDb[ch]),
+                                  { proportion (0.0f), proportion (-6.0f), proportion (-12.0f), proportion (-24.0f) });
+            bars.removeFromTop (meterLayout::gap * scale);
         }
     }
 
@@ -53,34 +82,16 @@ private:
 
     static float proportion (float db) { return juce::jlimit (0.0f, 1.0f, (db - minDb) / (maxDb - minDb)); }
 
-    static void drawBar (juce::Graphics& g, juce::Rectangle<float> bar, float db)
-    {
-        const auto corner = bar.getWidth() * 0.3f;
-        g.setColour (palette::track);
-        g.fillRoundedRectangle (bar, corner);
-
-        const auto level = proportion (db);
-
-        if (level <= 0.0f)
-            return;
-
-        juce::ColourGradient gradient (palette::meterLow, 0.0f, bar.getBottom(), palette::meterHigh, 0.0f, bar.getY(), false);
-        gradient.addColour (proportion (-12.0f), palette::meterLow);
-        gradient.addColour (proportion (-3.0f), palette::meterMid);
-        gradient.addColour (proportion (0.0f), palette::meterHigh);
-
-        g.setGradientFill (gradient);
-        g.fillRoundedRectangle (bar.withTop (bar.getBottom() - level * bar.getHeight()), corner);
-    }
-
     juce::String label;
     std::array<float, 2> levelsDb { -100.0f, -100.0f };
 };
 
-// Gain reduction of the compressor, drawn from the top down (0..-24 dB), with a readout.
+// Gain reduction of the compressor (0..-24 dB, growing to the right), with a readout.
 class GainReductionMeter final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
+    static constexpr float preferredHeight = meterLayout::captionHeight + meterLayout::gap + meterLayout::barHeight;
+
     void setReduction (float newReductionDb)
     {
         if (newReductionDb != reductionDb)
@@ -92,41 +103,18 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        auto bounds = getLocalBounds().toFloat();
-        const auto labelHeight = juce::jmin (18.0f, bounds.getHeight() * 0.08f);
-
-        g.setColour (palette::textDim);
-        g.setFont (palette::caption (juce::jmin (labelHeight * 0.75f, bounds.getWidth() * 0.32f)));
-        g.drawText ("GR", bounds.removeFromBottom (labelHeight), juce::Justification::centred, false);
-        bounds.removeFromBottom (labelHeight * 0.4f);
-
-        const auto readout = bounds.removeFromTop (labelHeight);
-        g.setColour (reductionDb < -0.05f ? palette::accent : palette::textDim);
-        g.setFont (palette::font (juce::jmin (labelHeight * 0.8f, bounds.getWidth() * 0.36f), true));
-        const auto text = reductionDb > -0.05f ? juce::String ("0.0")
+        const auto scale  = (float) getHeight() / preferredHeight;
+        const auto active = reductionDb < -0.05f;
+        const auto text = ! active               ? juce::String ("0.0")
                         : reductionDb > -9.95f ? juce::String (reductionDb, 1)
                                                : juce::String (juce::roundToInt (reductionDb));
-        g.drawText (text, readout, juce::Justification::centred, false);
-        bounds.removeFromTop (labelHeight * 0.4f);
 
-        const auto bar = bounds.withSizeKeepingCentre (bounds.getWidth() * 0.44f, bounds.getHeight());
-        const auto corner = bar.getWidth() * 0.3f;
+        auto bar = meterLayout::drawCaption (g, getLocalBounds().toFloat(), scale, "GR", text,
+                                             active ? palette::text : palette::textDim);
 
-        g.setColour (palette::track);
-        g.fillRoundedRectangle (bar, corner);
-
-        const auto amount = juce::jlimit (0.0f, 1.0f, -reductionDb / rangeDb);
-
-        if (amount > 0.0f)
-        {
-            g.setColour (palette::accent);
-            g.fillRoundedRectangle (bar.withHeight (amount * bar.getHeight()), corner);
-        }
-
-        g.setColour (palette::background.withAlpha (0.8f));
-
-        for (auto db : { 3.0f, 6.0f, 12.0f })
-            g.fillRect (bar.getX(), bar.getY() + db / rangeDb * bar.getHeight(), bar.getWidth(), 1.0f);
+        meterLayout::drawBar (g, bar.removeFromTop (meterLayout::barHeight * scale),
+                              juce::jlimit (0.0f, 1.0f, -reductionDb / rangeDb),
+                              { 3.0f / rangeDb, 6.0f / rangeDb, 12.0f / rangeDb });
     }
 
 private:

@@ -12,7 +12,7 @@ class PresetBar final : public juce::Component, private juce::ChangeListener
 {
 public:
     // Size at 100 % scale; the editor multiplies it by its scale.
-    static constexpr int preferredWidth = 470, preferredHeight = 28;
+    static constexpr int preferredWidth = 508, preferredHeight = 30;
 
     explicit PresetBar (PresetManager& m) : manager (m)
     {
@@ -89,20 +89,18 @@ public:
     void resized() override
     {
         const auto scale = (float) getHeight() / (float) preferredHeight;
-        const auto gap = juce::roundToInt (1.5f * scale);   // the small space between neighbouring pills
         auto area = getLocalBounds();
         const auto take = [&] (float width) { return area.removeFromLeft (juce::roundToInt (width * scale)); };
+        const auto gap  = [&] { take (8.0f); };
 
-        previousButton.setBounds (take (24.0f).withTrimmedRight (gap));
-        nameButton.setBounds (take (210.0f).reduced (gap, 0));
-        nextButton.setBounds (take (24.0f).withTrimmedLeft (gap));
-        take (8.0f);
-        saveButton.setBounds (take (52.0f).withTrimmedRight (gap));
-        moreButton.setBounds (take (28.0f).withTrimmedLeft (gap));
-        take (20.0f);
-        slotAButton.setBounds (take (28.0f));   // the two halves touch: one A | B pill
-        slotBButton.setBounds (take (28.0f));
-        copyButton.setBounds (take (48.0f).withTrimmedLeft (gap * 2));
+        previousButton.setBounds (take (28.0f));  gap();
+        nameButton.setBounds (take (206.0f));     gap();
+        nextButton.setBounds (take (28.0f));      gap();
+        saveButton.setBounds (take (52.0f));      gap();
+        moreButton.setBounds (take (34.0f));      gap();
+        slotAButton.setBounds (take (30.0f));   // the two halves touch: one A | B box
+        slotBButton.setBounds (take (30.0f));     gap();
+        copyButton.setBounds (take (52.0f));
     }
 
 private:
@@ -303,6 +301,10 @@ private:
             dialog->addButton (buttons[i], i == 0 ? 1 : 0,
                                i == 0 ? juce::KeyPress (juce::KeyPress::returnKey) : juce::KeyPress(),
                                i == buttons.size() - 1 ? juce::KeyPress (juce::KeyPress::escapeKey) : juce::KeyPress());
+
+        if (buttons.size() > 1)
+            if (auto* confirm = dialog->getButton (0))
+                confirm->getProperties().set ("primary", true);   // drawn white
 
         auto* window = dialog.get();
         auto* field = window->getTextEditor ("name");

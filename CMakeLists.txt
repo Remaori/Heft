@@ -61,6 +61,15 @@ target_sources(Heft PRIVATE ${HEFT_SOURCES})
 
 target_include_directories(Heft PRIVATE Source)
 
+# --- Font, compiled into the plugin -------------------------------------------
+# Inter (SIL Open Font License, Fonts/OFL.txt): the same look on Windows and macOS.
+juce_add_binary_data(HeftFonts
+    HEADER_NAME HeftFonts.h
+    NAMESPACE   HeftFonts
+    SOURCES     Fonts/Inter-Medium.ttf Fonts/Inter-Bold.ttf)
+
+target_link_libraries(Heft PRIVATE HeftFonts)
+
 target_compile_definitions(Heft
     PUBLIC
         JUCE_WEB_BROWSER=0
@@ -150,6 +159,7 @@ target_link_libraries(HeftTests
     PRIVATE
         juce::juce_audio_processors
         juce::juce_dsp
+        HeftFonts
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags
