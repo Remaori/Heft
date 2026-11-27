@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
-# Rebuilds, validates and installs Heft.vst3 on macOS with a single command.
+# Rebuilds, validates and installs Heft (VST3 and Audio Unit) on macOS with a single command.
 # The macOS counterpart of build.ps1, with the same steps and options.
 #
-#   ./build.sh                    # build + pluginval (level 10) + install
+#   ./build.sh                    # build + pluginval (level 10) and auval + install
 #   ./build.sh --strictness 5     # faster validation
 #   ./build.sh --measure          # also measure the sound (HeftMeasure) and run the unit tests (HeftTests)
 #   ./build.sh --skip-validation  # build and install only
 #   ./build.sh --clean            # delete build/ and build from scratch
 #   ./build.sh --host             # only build JUCE's AudioPluginHost, a second host for testing
-#   ./build.sh --install-dir DIR  # install somewhere else (default: ~/Library/Audio/Plug-Ins/VST3)
+#   ./build.sh --install-dir DIR  # install the VST3 somewhere else (default: ~/Library/Audio/Plug-Ins/VST3)
+#
+# The Audio Unit always goes to ~/Library/Audio/Plug-Ins/Components: macOS only finds it
+# there, so it's validated after installing it, and uninstalled if anything fails.
 
 set -euo pipefail
 
@@ -18,9 +21,21 @@ measure=0
 clean=0
 buildHost=0
 installDir="$HOME/Library/Audio/Plug-Ins/VST3"
+auDest="$HOME/Library/Audio/Plug-Ins/Components/Heft.component"
+auInstalled=0   # 1 while an Audio Unit that hasn't passed every check is installed
 
 step() { printf '\n\033[36m==> %s\033[0m\n' "$1"; }
-fail() { printf '\n\033[31mERROR: %s\033[0m\n' "$1"; exit 1; }
+fail()
+{
+    printf '\n\033[31mERROR: %s\033[0m\n' "$1"
+
+    if [ "$auInstalled" = 1 ]; then
+        rm -rf "$auDest"
+        echo 'The Audio Unit was uninstalled.'
+    fi
+
+    exit 1
+}
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -30,7 +45,7 @@ while [ $# -gt 0 ]; do
         --clean)           clean=1 ;;
         --host)            buildHost=1 ;;
         --install-dir)     installDir="${2:-}"; shift ;;
-        -h|--help)         sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help)         sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *)                 fail "Unknown option: $1 (see ./build.sh --help)" ;;
     esac
     shift
@@ -45,12 +60,17 @@ esac
 root="$(cd "$(dirname "$0")" && pwd)"
 buildDir="$root/build"
 pluginBuilt="$buildDir/Heft_artefacts/Release/VST3/Heft.vst3"
+auBuilt="$buildDir/Heft_artefacts/Release/AU/Heft.component"
 measureExe="$buildDir/HeftMeasure_artefacts/Release/HeftMeasure"
 testsExe="$buildDir/HeftTests_artefacts/Release/HeftTests"
 minMacOS=12.0   # CMAKE_OSX_DEPLOYMENT_TARGET in CMakeLists.txt
 pluginvalDir="$root/tools/pluginval"
 pluginvalExe="$pluginvalDir/pluginval.app/Contents/MacOS/pluginval"
 pluginvalUrl="https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_macOS.zip"
+
+# The architectures to test: on Apple Silicon, the Intel code too (it needs Rosetta).
+archs="$(uname -m)"
+if [ "$archs" = arm64 ]; then archs='arm64 x86_64'; fi
 
 command -v cmake > /dev/null || fail 'CMake not found. Install it with "brew install cmake".'
 xcode-select -p > /dev/null 2>&1 || fail 'Xcode not found. Install Xcode from the App Store and open it once.'
@@ -120,37 +140,67 @@ cmake -S "$root" -B "$buildDir" -G Xcode || fail 'CMake configuration failed.'
 # --- 2. Build ------------------------------------------------------------------
 step 'Building in Release'
 build "$buildDir" Heft_VST3 || fail 'Build failed. Check the errors above.'
+build "$buildDir" Heft_AU || fail 'Building the Audio Unit failed. Check the errors above.'
 [ -d "$pluginBuilt" ] || fail "Built plugin not found at $pluginBuilt"
+[ -d "$auBuilt" ] || fail "Built Audio Unit not found at $auBuilt"
 checkBundle "$pluginBuilt"
+checkBundle "$auBuilt"
 
-# --- 3. Validate ---------------------------------------------------------------
+# --- 3. Install the Audio Unit, so that macOS (and auval) can find it ----------
+step "Installing the Audio Unit to ${auDest%/*}"
+mkdir -p "${auDest%/*}"
+rm -rf "$auDest"
+cp -R "$auBuilt" "$auDest"
+auInstalled=1
+checkBundle "$auDest"
+# macOS keeps a list of the Audio Units it found; restarting this service makes it look again.
+killall -9 AudioComponentRegistrar 2> /dev/null || true
+
+# --- 4. Validate ---------------------------------------------------------------
 if [ "$skipValidation" = 0 ]; then
     getPluginval
     step "Validating with pluginval (strictness $strictness)"
     logDir="$buildDir/pluginval"
     "$pluginvalExe" --strictness-level "$strictness" --output-dir "$logDir" --validate "$pluginBuilt" \
         || fail "pluginval found errors (log in $logDir). The plugin was NOT installed."
+    "$pluginvalExe" --strictness-level "$strictness" --output-dir "$logDir" --validate "$auDest" \
+        || fail "pluginval found errors in the Audio Unit (log in $logDir). The plugin was NOT installed."
     printf '\033[32mpluginval: all tests passed.\033[0m\n'
+
+    for arch in $archs; do
+        step "Validating the Audio Unit with auval ($arch)"
+        auvalLog="$buildDir/auval-$arch.log"
+        { arch "-$arch" auval -v aufx Hft1 Rnau > "$auvalLog" 2>&1 && grep -q 'AU VALIDATION SUCCEEDED' "$auvalLog"; } \
+            || fail "auval found errors ($arch, log in $auvalLog). The plugin was NOT installed."
+        printf '\033[32mauval: AU VALIDATION SUCCEEDED.\033[0m\n'
+    done
 fi
 
 if [ "$measure" = 1 ]; then
     build "$buildDir" HeftMeasure || fail 'Building HeftMeasure failed.'
     build "$buildDir" HeftTests || fail 'Building HeftTests failed.'
 
-    # On Apple Silicon, the Intel code too (it needs Rosetta).
-    archs="$(uname -m)"
-    if [ "$archs" = arm64 ]; then archs='arm64 x86_64'; fi
-
     for arch in $archs; do
         step "Measuring the sound (HeftMeasure, $arch)"
         arch "-$arch" "$measureExe" "$pluginBuilt" || fail "Some measurements failed ($arch). The plugin was NOT installed."
+
+        step "Measuring the Audio Unit (HeftMeasure, $arch)"
+        arch "-$arch" "$measureExe" "$auDest" || fail "Some measurements of the Audio Unit failed ($arch). The plugin was NOT installed."
+
+        step "Checking that the Audio Unit sounds like the VST3 ($arch)"
+        nullDir="$buildDir/null/vst3-$arch"
+        rm -rf "$nullDir"
+        arch "-$arch" "$measureExe" "$pluginBuilt" --null-render "$nullDir" > /dev/null \
+            || fail "Rendering the VST3 for the comparison failed ($arch)."
+        arch "-$arch" "$measureExe" "$auDest" --null-compare "$nullDir" \
+            || fail "The Audio Unit doesn't sound like the VST3 ($arch). The plugin was NOT installed."
 
         step "Running the unit tests (HeftTests, $arch)"
         arch "-$arch" "$testsExe" || fail "Some unit tests failed ($arch). The plugin was NOT installed."
     done
 fi
 
-# --- 4. Install ----------------------------------------------------------------
+# --- 5. Install the VST3 -------------------------------------------------------
 step "Installing to $installDir"
 mkdir -p "$installDir"
 dest="$installDir/Heft.vst3"
@@ -159,7 +209,8 @@ dest="$installDir/Heft.vst3"
 rm -rf "$dest"
 cp -R "$pluginBuilt" "$dest"
 checkBundle "$dest"
+auInstalled=0   # everything passed: the Audio Unit stays
 
-printf '\n\033[32mDone in %s s. Plugin installed at:\033[0m\n  %s\n' "$SECONDS" "$dest"
+printf '\n\033[32mDone in %s s. Plugins installed at:\033[0m\n  %s\n  %s\n' "$SECONDS" "$dest" "$auDest"
 echo 'If REAPER is open, quit and reopen it to load this build. If Heft is new to it:'
-echo 'Settings (Cmd+,) > Plug-ins > VST > Re-scan.'
+echo 'Settings (Cmd+,) > Plug-ins > VST > Re-scan. Logic and GarageBand: quit and reopen them.'
